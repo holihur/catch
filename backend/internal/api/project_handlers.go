@@ -1,7 +1,9 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -101,8 +103,13 @@ func (a *API) updateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name     *string `json:"name"`
-		Platform *string `json:"platform"`
+		Name             *string `json:"name"`
+		Platform         *string `json:"platform"`
+		RepoProvider     *string `json:"repoProvider"`
+		RepoURL          *string `json:"repoUrl"`
+		RepoBranch       *string `json:"repoBranch"`
+		RepoRoot         *string `json:"repoRoot"`
+		RepoLinkTemplate *string `json:"repoLinkTemplate"`
 	}
 	if err := httpx.DecodeJSON(w, r, &body, 16<<10); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "invalid_body", err.Error())
@@ -119,6 +126,63 @@ func (a *API) updateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Platform != nil {
 		set["platform"] = strings.TrimSpace(*body.Platform)
+	}
+	if body.RepoURL != nil {
+		repoURL, provider, err := normalizeRepoURL(*body.RepoURL, stringValue(body.RepoProvider))
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "invalid_repo_url", err.Error())
+			return
+		}
+		set["repoUrl"] = repoURL
+		if provider != "" {
+			set["repoProvider"] = provider
+		}
+	}
+	if body.RepoProvider != nil && body.RepoURL == nil {
+		p := strings.ToLower(strings.TrimSpace(*body.RepoProvider))
+		if p != "" && !validRepoProvider(p) {
+			httpx.Error(w, http.StatusBadRequest, "invalid_repo_provider", "源码平台必须是 github、gitlab、bitbucket、gitea 或 custom")
+			return
+		}
+		set["repoProvider"] = p
+	}
+	if body.RepoBranch != nil {
+		branch := strings.TrimSpace(*body.RepoBranch)
+		if len(branch) > 200 || strings.ContainsAny(branch, "\r\n") {
+			httpx.Error(w, http.StatusBadRequest, "invalid_repo_branch", "分支名称无效")
+			return
+		}
+		set["repoBranch"] = branch
+	}
+	if body.RepoRoot != nil {
+		root := strings.Trim(strings.TrimSpace(*body.RepoRoot), "/")
+		if len(root) > 200 || strings.Contains(root, "..") || strings.ContainsAny(root, "\r\n") {
+			httpx.Error(w, http.StatusBadRequest, "invalid_repo_root", "源码根目录无效")
+			return
+		}
+		set["repoRoot"] = root
+	}
+	if body.RepoLinkTemplate != nil {
+		tpl := strings.TrimSpace(*body.RepoLinkTemplate)
+		if len(tpl) > 1000 {
+			httpx.Error(w, http.StatusBadRequest, "invalid_repo_template", "自定义链接模板过长")
+			return
+		}
+		if tpl != "" {
+			if !strings.HasPrefix(tpl, "https://") && !strings.HasPrefix(tpl, "http://") {
+				httpx.Error(w, http.StatusBadRequest, "invalid_repo_template", "自定义链接模板必须以 http(s):// 开头")
+				return
+			}
+			if !strings.Contains(tpl, "{path}") {
+				httpx.Error(w, http.StatusBadRequest, "invalid_repo_template", "自定义链接模板必须包含 {path}")
+				return
+			}
+			if strings.ContainsAny(tpl, "\r\n\t ") {
+				httpx.Error(w, http.StatusBadRequest, "invalid_repo_template", "自定义链接模板不能包含空白字符")
+				return
+			}
+		}
+		set["repoLinkTemplate"] = tpl
 	}
 	if len(set) == 0 {
 		httpx.Error(w, http.StatusBadRequest, "empty_update", "没有需要更新的字段")
@@ -176,4 +240,57 @@ func (a *API) deleteProject(w http.ResponseWriter, r *http.Request) {
 	}
 	a.logger.Slog.WarnContext(r.Context(), "project deleted", "projectId", id.Hex(), "actor", currentUser(r).Email)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func validRepoProvider(p string) bool {
+	switch p {
+	case "", "github", "gitlab", "bitbucket", "gitea", "custom":
+		return true
+	}
+	return false
+}
+
+func stringValue(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+// normalizeRepoURL validates and canonicalizes a repository web URL. The
+// provider is inferred for common hosts when the client did not specify one.
+func normalizeRepoURL(raw, explicitProvider string) (string, string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", strings.ToLower(strings.TrimSpace(explicitProvider)), nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", "", errors.New("源码仓库地址必须是 http(s) URL")
+	}
+	if len(raw) > 300 {
+		return "", "", errors.New("源码仓库地址过长")
+	}
+	clean := strings.TrimRight(raw, "/")
+	clean = strings.TrimSuffix(clean, ".git")
+	provider := strings.ToLower(strings.TrimSpace(explicitProvider))
+	if provider != "" && !validRepoProvider(provider) {
+		return "", "", errors.New("源码平台必须是 github、gitlab、bitbucket、gitea 或 custom")
+	}
+	if provider == "" {
+		host := strings.ToLower(u.Hostname())
+		switch {
+		case strings.Contains(host, "github"):
+			provider = "github"
+		case strings.Contains(host, "gitlab"):
+			provider = "gitlab"
+		case strings.Contains(host, "bitbucket"):
+			provider = "bitbucket"
+		case strings.Contains(host, "gitea"):
+			provider = "gitea"
+		default:
+			provider = "custom"
+		}
+	}
+	return clean, provider, nil
 }

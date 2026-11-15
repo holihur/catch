@@ -135,8 +135,18 @@ export const api = {
   projects: () => request<ProjectListResponse>("/api/projects"),
   createProject: (body: { name: string; slug?: string; platform?: string }) =>
     request<Project>("/api/projects", { method: "POST", body }),
-  updateProject: (id: string, body: { name?: string; platform?: string }) =>
-    request<Project>(`/api/projects/${id}`, { method: "PATCH", body }),
+  updateProject: (
+    id: string,
+    body: {
+      name?: string
+      platform?: string
+      repoProvider?: string
+      repoUrl?: string
+      repoBranch?: string
+      repoRoot?: string
+      repoLinkTemplate?: string
+    },
+  ) => request<Project>(`/api/projects/${id}`, { method: "PATCH", body }),
   rotateKey: (id: string) =>
     request<Project>(`/api/projects/${id}/rotate-key`, { method: "POST" }),
   deleteProject: (id: string) => request<void>(`/api/projects/${id}`, { method: "DELETE" }),

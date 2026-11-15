@@ -7,6 +7,8 @@ import {
   Clock,
   GitBranch,
   MessageSquare,
+  Code2,
+  ExternalLink,
   RefreshCw,
   RotateCcw,
   Send,
@@ -15,9 +17,11 @@ import {
 import { toast } from "sonner"
 
 import { api } from "@/lib/api"
-import type { EventItem, IssueDetail, User } from "@/lib/types"
+import type { EventItem, IssueDetail, Project, User } from "@/lib/types"
 import { cn, formatFullDate, formatNumber, relativeTime } from "@/lib/utils"
 import { useAuth } from "@/context/AuthContext"
+import { useProjects } from "@/context/ProjectContext"
+import { buildSourceUrl, firstSourceUrl, parseSourceLocation, repoLabel } from "@/lib/source"
 import { PageHeader } from "@/components/common/PageHeader"
 import { LevelBadge, SourceBadge, StatusBadge } from "@/components/common/Badges"
 import { CopyButton } from "@/components/common/CopyButton"
@@ -50,6 +54,7 @@ export function IssueDetailPage() {
   const { id = "" } = useParams()
   const navigate = useNavigate()
   const { me } = useAuth()
+  const { projects, selectedId } = useProjects()
   const [data, setData] = React.useState<IssueDetail | null>(null)
   const [members, setMembers] = React.useState<User[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -84,6 +89,11 @@ export function IssueDetailPage() {
 
   const selectedEvent = data?.events.find((e) => e.id === selectedEventId) ?? data?.events[0]
   const issue = data?.issue
+  const project =
+    projects.find((p) => p.id === issue?.projectId) ??
+    projects.find((p) => p.id === selectedId) ??
+    null
+  const firstSource = firstSourceUrl(project, [selectedEvent?.stack, issue?.culprit])
 
   const changeStatus = async (status: string) => {
     if (!issue) return
@@ -209,7 +219,14 @@ export function IssueDetailPage() {
           </span>
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {firstSource ? (
+              <Button asChild variant="outline" size="sm">
+                <a href={firstSource} target="_blank" rel="noreferrer noopener">
+                  <Code2 className="size-4" /> 源码
+                </a>
+              </Button>
+            ) : null}
             <UserRound className="text-muted-foreground size-4" />
             <Select value={issue.assigneeId || "unassigned"} onValueChange={(v) => void assign(v)} disabled={busy}>
               <SelectTrigger className="h-8 w-[160px] text-xs">
@@ -257,7 +274,7 @@ export function IssueDetailPage() {
             </CardHeader>
             <CardContent>
               {selectedEvent ? (
-                <EventSummary event={selectedEvent} />
+                <EventSummary event={selectedEvent} project={project} />
               ) : (
                 <EmptyState title="暂无事件" description="该问题还没有关联的事件。" />
               )}
@@ -270,7 +287,7 @@ export function IssueDetailPage() {
                   <TabsTrigger value="events">事件 ({data.events.length})</TabsTrigger>
                 </TabsList>
                 <TabsContent value="stack" className="pt-3">
-                  <StackTrace stack={selectedEvent?.stack} />
+                  <StackTrace stack={selectedEvent?.stack} project={project} />
                 </TabsContent>
                 <TabsContent value="breadcrumbs" className="pt-3">
                   {selectedEvent?.breadcrumbs?.length ? (
@@ -427,6 +444,20 @@ export function IssueDetailPage() {
                 <MetaRow label="解决时间">{formatFullDate(issue.resolvedAt)}</MetaRow>
               ) : null}
               {issue.resolvedBy ? <MetaRow label="解决人">{issue.resolvedBy}</MetaRow> : null}
+              {project?.repoUrl ? (
+                <MetaRow label="源码仓库">
+                  <a
+                    href={project.repoUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-primary inline-flex max-w-[220px] items-center gap-1 truncate hover:underline"
+                    title={project.repoUrl}
+                  >
+                    <span className="truncate">{repoLabel(project)}</span>
+                    <ExternalLink className="size-3 shrink-0" />
+                  </a>
+                </MetaRow>
+              ) : null}
               {selectedEvent?.release ? <MetaRow label="版本">{selectedEvent.release}</MetaRow> : null}
               {selectedEvent?.environment ? <MetaRow label="环境">{selectedEvent.environment}</MetaRow> : null}
               {selectedEvent?.url ? (
@@ -480,7 +511,12 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-function EventSummary({ event }: { event: EventItem }) {
+function EventSummary({ event, project }: { event: EventItem; project: Project | null }) {
+  const culpritLocation = event.culprit ? parseSourceLocation(event.culprit) : null
+  const culpritSource =
+    culpritLocation && project
+      ? buildSourceUrl(project, culpritLocation.file, culpritLocation.line, culpritLocation.column)
+      : null
   return (
     <div className="bg-muted/30 space-y-2 rounded-xl p-3.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -506,6 +542,16 @@ function EventSummary({ event }: { event: EventItem }) {
         {event.user?.id ? <span>用户：{event.user.email || event.user.id}</span> : null}
         {event.service ? <span>服务：{event.service}</span> : null}
         {event.release ? <span>版本：{event.release}</span> : null}
+        {culpritSource ? (
+          <a
+            href={culpritSource}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-primary inline-flex items-center gap-1 hover:underline"
+          >
+            打开源码 <ExternalLink className="size-3" />
+          </a>
+        ) : null}
       </div>
     </div>
   )

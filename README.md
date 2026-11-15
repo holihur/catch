@@ -17,6 +17,7 @@ Catch 是一个多租户日志与错误可观测平台：前端 SDK 和后端服
 | 问题 | 指纹归并、状态流转（待处理/已解决/已忽略）、回归检测、负责人、评论、堆栈/面包屑/上下文 |
 | 日志 | 前端 + 后端统一检索，来源/级别/时间/关键词过滤，10 秒实时刷新，详情弹窗 |
 | 持续改进 | 健康分、MTTR、回归数、长期未复现问题、错误环比、激增检测、规则化改进建议 |
+| 源码跳转 | 配置项目仓库后，从堆栈帧/错误位置直接打开 GitHub/GitLab/Bitbucket/Gitea 对应源码行 |
 | 设置 | 项目与采集密钥、密钥轮换、成员角色、租户信息、OIDC 配置、SDK 接入示例与一键测试 |
 | 可观测性 | 后端请求日志/panic 自动落库；前端 SDK 捕获 `window.onerror`、`unhandledrejection`、React 错误边界和 API 5xx |
 
@@ -360,7 +361,36 @@ Go 后端使用 slog 双写：
 
 ---
 
-## API 一览
+## 源码跳转
+
+在 **设置 → 项目与密钥 → 源码** 中为项目配置仓库：
+
+| 字段 | 示例 | 说明 |
+| --- | --- | --- |
+| 源码平台 | GitHub / GitLab / Bitbucket / Gitea / 自定义 | 决定 URL 规则 |
+| 仓库地址 | `https://github.com/holihur/catch` | 不含 `.git` 也可以 |
+| 分支 | `main` / `master` | 默认 `main` |
+| 源码根目录 | `frontend` / `backend` / 空 | 堆栈路径会拼接在该目录下 |
+| 自定义模板 | `https://git.example.com/repo/blob/{branch}/{path}#L{line}` | 支持 `{path}` `{line}` `{column}` `{branch}`，必须包含 `{path}` |
+
+配置后：
+
+- 问题详情的堆栈帧中，源码文件路径变为可点击链接
+- 问题详情顶部出现“源码”按钮，事件摘要和弹窗中出现“打开源码”
+- 日志详情弹窗可直接打开对应源码
+- 举例：`http://localhost:5173/src/pages/Orders.tsx:88:24` + 根目录 `frontend` →
+  `https://github.com/holihur/catch/blob/master/frontend/src/pages/Orders.tsx#L88`
+
+路径处理：
+
+- 支持 `http(s)://`、`file://`、`webpack://`、Go panic、Python `File "...", line N` 等常见堆栈格式
+- 自动去掉 URL origin、查询参数、构建前缀和 Windows 盘符
+- 自动跳过 `node_modules`、`/assets/index-*.js`、`index-*.js`、`chunk-*.js` 等无法映射的构建产物
+- 仅当项目配置了仓库地址或自定义模板时才生成链接
+
+> 当前版本不解析 Source Map。压缩后的 `index-*.js` 堆栈会保持纯文本；如需映射到原始 TS/TSX 行列，需要后续接入 Source Map 处理。
+
+
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

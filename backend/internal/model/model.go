@@ -97,8 +97,16 @@ type Project struct {
 	Slug      string             `bson:"slug" json:"slug"`
 	Platform  string             `bson:"platform,omitempty" json:"platform,omitempty"`
 	IngestKey string             `bson:"ingestKey" json:"ingestKey"`
-	CreatedAt time.Time          `bson:"createdAt" json:"createdAt"`
-	UpdatedAt time.Time          `bson:"updatedAt" json:"updatedAt"`
+
+	// Source mapping lets stack frames deep-link into the project repository.
+	RepoProvider     string `bson:"repoProvider,omitempty" json:"repoProvider,omitempty"`
+	RepoURL          string `bson:"repoUrl,omitempty" json:"repoUrl,omitempty"`
+	RepoBranch       string `bson:"repoBranch,omitempty" json:"repoBranch,omitempty"`
+	RepoRoot         string `bson:"repoRoot,omitempty" json:"repoRoot,omitempty"`
+	RepoLinkTemplate string `bson:"repoLinkTemplate,omitempty" json:"repoLinkTemplate,omitempty"`
+
+	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+	UpdatedAt time.Time `bson:"updatedAt" json:"updatedAt"`
 }
 
 // Event is a single log line or error occurrence. Logs and errors share one

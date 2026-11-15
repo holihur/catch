@@ -1,10 +1,11 @@
 import * as React from "react"
 import { Link } from "react-router-dom"
-import { RefreshCw, Search, ScrollText } from "lucide-react"
+import { Code2, ExternalLink, RefreshCw, Search, ScrollText } from "lucide-react"
 
 import { api } from "@/lib/api"
-import type { EventItem, EventsResponse } from "@/lib/types"
+import type { EventItem, EventsResponse, Project } from "@/lib/types"
 import { useProjects } from "@/context/ProjectContext"
+import { firstSourceUrl } from "@/lib/source"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { cn, formatFullDate, formatNumber, levelClass, relativeTime } from "@/lib/utils"
@@ -33,7 +34,7 @@ import {
 } from "@/components/ui/select"
 
 export function LogsPage() {
-  const { selectedId } = useProjects()
+  const { selectedId, projects } = useProjects()
   const isMobile = useMediaQuery("(max-width: 767px)")
   const pageSize = isMobile ? 20 : 50
   const [source, setSource] = React.useState("all")
@@ -278,12 +279,22 @@ export function LogsPage() {
         </>
       ) : null}
 
-      <EventDetailDialog event={selected} onClose={() => setSelected(null)} />
+      <EventDetailDialog event={selected} projects={projects} onClose={() => setSelected(null)} />
     </div>
   )
 }
 
-function EventDetailDialog({ event, onClose }: { event: EventItem | null; onClose: () => void }) {
+function EventDetailDialog({
+  event,
+  projects,
+  onClose,
+}: {
+  event: EventItem | null
+  projects: Project[]
+  onClose: () => void
+}) {
+  const project = event?.projectId ? projects.find((p) => p.id === event.projectId) ?? null : null
+  const sourceUrl = firstSourceUrl(project, [event?.culprit, event?.stack])
   return (
     <Dialog open={Boolean(event)} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl">
@@ -298,6 +309,13 @@ function EventDetailDialog({ event, onClose }: { event: EventItem | null; onClos
               <DialogDescription className="break-all">
                 {formatFullDate(event.timestamp)} · {event.service || "unknown"} · {event.environment || "unknown"}
               </DialogDescription>
+              {sourceUrl ? (
+                <Button asChild variant="outline" size="sm" className="mt-1 w-fit">
+                  <a href={sourceUrl} target="_blank" rel="noreferrer noopener">
+                    <Code2 className="size-3.5" /> 打开源码 <ExternalLink className="size-3" />
+                  </a>
+                </Button>
+              ) : null}
             </DialogHeader>
 
             <div className="space-y-4 text-sm">
@@ -344,7 +362,7 @@ function EventDetailDialog({ event, onClose }: { event: EventItem | null; onClos
               {event.stack ? (
                 <div>
                   <p className="text-muted-foreground mb-1.5 text-xs font-medium">堆栈</p>
-                  <StackTrace stack={event.stack} />
+                  <StackTrace stack={event.stack} project={project} />
                 </div>
               ) : null}
 

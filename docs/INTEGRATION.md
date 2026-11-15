@@ -258,7 +258,18 @@ curl -X POST "$CATCH_URL/api/ingest" \
 }
 ```
 
-### 2.5 分组规则
+### 2.5 源码跳转
+
+在 Catch 中为项目配置源码仓库后，堆栈和 `culprit` 中的文件路径会生成源码链接。为了获得最佳效果：
+
+- 上报原始堆栈，不要删除 `file:line:column` 信息
+- JS 构建尽量保留 Source Map；当前版本会跳过无法映射的压缩 bundle
+- Go/Python/Java 等后端保留完整包路径或仓库内相对路径
+- 在项目设置中填写正确的“源码根目录”（如 `frontend`、`backend`）
+
+支持 GitHub、GitLab、Bitbucket、Gitea 和自定义 URL 模板。
+
+### 2.6 分组规则
 
 服务端按以下内容计算指纹：
 
@@ -594,3 +605,4 @@ curl -s -X POST "$CATCH_URL/api/ingest" \
 - `frontend/src/lib/telemetry.ts`：控制台自用的 React SDK
 - `backend/internal/api/ingest_handlers.go`：采集协议实现
 - `backend/internal/ingest/fingerprint.go`：错误归并规则
+- `frontend/src/lib/source.ts`：堆栈路径解析与源码链接生成

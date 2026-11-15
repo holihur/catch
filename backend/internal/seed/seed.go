@@ -91,7 +91,13 @@ func seedDemo(ctx context.Context, st *store.Store, logger *slog.Logger) error {
 		}
 		// Deterministic keys make the bundled frontend SDK work out of the
 		// box. Only set them on creation so key rotation is never overwritten.
-		web, err = st.UpdateProject(ctx, t.ID, web.ID, bson.M{"ingestKey": "ck_demo_web_0000000000000000000000"})
+		web, err = st.UpdateProject(ctx, t.ID, web.ID, bson.M{
+			"ingestKey":    "ck_demo_web_0000000000000000000000",
+			"repoProvider": "github",
+			"repoUrl":      "https://github.com/holihur/catch",
+			"repoBranch":   "master",
+			"repoRoot":     "frontend",
+		})
 		if err != nil {
 			return fmt.Errorf("set demo web key: %w", err)
 		}
@@ -101,7 +107,13 @@ func seedDemo(ctx context.Context, st *store.Store, logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		api, err = st.UpdateProject(ctx, t.ID, api.ID, bson.M{"ingestKey": "ck_demo_api_0000000000000000000000"})
+		api, err = st.UpdateProject(ctx, t.ID, api.ID, bson.M{
+			"ingestKey":    "ck_demo_api_0000000000000000000000",
+			"repoProvider": "github",
+			"repoUrl":      "https://github.com/holihur/catch",
+			"repoBranch":   "master",
+			"repoRoot":     "backend",
+		})
 		if err != nil {
 			return fmt.Errorf("set demo api key: %w", err)
 		}

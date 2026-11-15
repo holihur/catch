@@ -4,6 +4,8 @@ import {
   Check,
   Code2,
   Copy,
+  ExternalLink,
+  GitBranch,
   KeyRound,
   Loader2,
   Plus,
@@ -22,6 +24,7 @@ import { useAuth } from "@/context/AuthContext"
 import { useProjects } from "@/context/ProjectContext"
 import { sendTestEvent, telemetryEnabled, telemetryInfo } from "@/lib/telemetry"
 import { copyText, formatFullDate, relativeTime } from "@/lib/utils"
+import { buildSourceUrl, detectProvider, repoLabel } from "@/lib/source"
 import { PageHeader } from "@/components/common/PageHeader"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
 import { CopyButton } from "@/components/common/CopyButton"
@@ -67,6 +70,7 @@ export function SettingsPage() {
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<unknown>(null)
   const [createOpen, setCreateOpen] = React.useState(false)
+  const [sourceProject, setSourceProject] = React.useState<Project | null>(null)
   const [confirm, setConfirm] = React.useState<{ type: "delete" | "rotate"; project: Project } | null>(null)
   const [confirmBusy, setConfirmBusy] = React.useState(false)
 
@@ -160,6 +164,24 @@ export function SettingsPage() {
                       <CardDescription className="mt-1 font-mono text-xs">
                         {p.slug} · {p.platform || "未设置平台"}
                       </CardDescription>
+                      {p.repoUrl ? (
+                        <a
+                          href={p.repoUrl}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="text-muted-foreground hover:text-primary mt-1.5 inline-flex max-w-[260px] items-center gap-1 text-[11px]"
+                          title={p.repoUrl}
+                        >
+                          <GitBranch className="size-3 shrink-0" />
+                          <span className="truncate">{repoLabel(p)}</span>
+                          <ExternalLink className="size-2.5 shrink-0" />
+                        </a>
+                      ) : p.repoLinkTemplate ? (
+                        <span className="text-muted-foreground mt-1.5 inline-flex max-w-[260px] items-center gap-1 text-[11px]">
+                          <GitBranch className="size-3 shrink-0" />
+                          <span className="truncate">自定义源码链接模板</span>
+                        </span>
+                      ) : null}
                     </div>
                     <Button
                       variant="ghost"
@@ -188,7 +210,10 @@ export function SettingsPage() {
                         创建于 {formatFullDate(p.createdAt)}
                       </p>
                       {canManage ? (
-                        <div className="flex gap-1">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => setSourceProject(p)}>
+                            <Code2 className="size-3.5" /> 源码
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -364,6 +389,18 @@ export function SettingsPage() {
         }}
       />
 
+      {sourceProject ? (
+        <ProjectSourceDialog
+          project={sourceProject}
+          canManage={canManage}
+          onClose={() => setSourceProject(null)}
+          onSaved={async () => {
+            await refreshProjects()
+            setSourceProject(null)
+          }}
+        />
+      ) : null}
+
       <ConfirmDialog
         open={Boolean(confirm)}
         onOpenChange={(open) => !open && setConfirm(null)}
@@ -426,6 +463,172 @@ export function SettingsPage() {
       toast.error(err instanceof Error ? err.message : "移除成员失败")
     }
   }
+}
+
+function ProjectSourceDialog({
+  project,
+  canManage,
+  onClose,
+  onSaved,
+}: {
+  project: Project
+  canManage: boolean
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const [provider, setProvider] = React.useState(project.repoProvider || "github")
+  const [repoUrl, setRepoUrl] = React.useState(project.repoUrl || "")
+  const [branch, setBranch] = React.useState(project.repoBranch || "main")
+  const [root, setRoot] = React.useState(project.repoRoot || "")
+  const [template, setTemplate] = React.useState(project.repoLinkTemplate || "")
+  const [busy, setBusy] = React.useState(false)
+
+  const previewProject: Project = {
+    ...project,
+    repoProvider: provider,
+    repoUrl: repoUrl.trim(),
+    repoBranch: branch.trim() || "main",
+    repoRoot: root.trim(),
+    repoLinkTemplate: template.trim(),
+  }
+  const preview = buildSourceUrl(previewProject, "src/App.tsx", 42, 7)
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      await api.updateProject(project.id, {
+        repoProvider: provider,
+        repoUrl: repoUrl.trim(),
+        repoBranch: branch.trim(),
+        repoRoot: root.trim(),
+        repoLinkTemplate: template.trim(),
+      })
+      toast.success("源码映射已保存")
+      await onSaved()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "保存失败")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-xl">
+        <form onSubmit={save} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Code2 className="size-4" /> 源码映射
+            </DialogTitle>
+            <DialogDescription>
+              配置 <strong>{project.name}</strong> 的仓库后，堆栈帧和错误位置可以直接跳转到对应源码行。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="repo-provider">源码平台</Label>
+              <Select value={provider} onValueChange={setProvider} disabled={!canManage}>
+                <SelectTrigger id="repo-provider" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="github">GitHub</SelectItem>
+                  <SelectItem value="gitlab">GitLab</SelectItem>
+                  <SelectItem value="bitbucket">Bitbucket</SelectItem>
+                  <SelectItem value="gitea">Gitea</SelectItem>
+                  <SelectItem value="custom">自定义 URL 模板</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="repo-branch">分支</Label>
+              <Input
+                id="repo-branch"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                placeholder="main"
+                disabled={!canManage}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="repo-url">仓库地址</Label>
+              <Input
+                id="repo-url"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                onBlur={() => {
+                  if (repoUrl.trim() && !project.repoProvider) {
+                    setProvider(detectProvider(repoUrl.trim()) || "custom")
+                  }
+                }}
+                placeholder="https://github.com/owner/repo"
+                disabled={!canManage}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="repo-root">源码根目录</Label>
+              <Input
+                id="repo-root"
+                value={root}
+                onChange={(e) => setRoot(e.target.value)}
+                placeholder="frontend"
+                disabled={!canManage}
+              />
+              <p className="text-muted-foreground text-[10px]">
+                堆栈路径会拼接到该目录下，例如 frontend/src/App.tsx
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="repo-template">自定义模板（可选）</Label>
+              <Input
+                id="repo-template"
+                value={template}
+                onChange={(e) => setTemplate(e.target.value)}
+                placeholder="https://git.example.com/repo/blob/{branch}/{path}#L{line}"
+                disabled={!canManage}
+              />
+              <p className="text-muted-foreground text-[10px]">
+                支持 {"{path} {line} {column} {branch}"}，设置后优先使用
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-muted/40 space-y-1.5 rounded-xl p-3 text-xs">
+            <p className="text-muted-foreground">链接预览</p>
+            {preview ? (
+              <a
+                href={preview}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-primary block break-all font-mono text-[11px] hover:underline"
+              >
+                {preview}
+              </a>
+            ) : (
+              <p className="text-muted-foreground">填写仓库地址或自定义模板后显示</p>
+            )}
+            <p className="text-muted-foreground pt-1 text-[10px]">
+              捆绑后的 index-*.js 和 node_modules 帧会被忽略；如需还原压缩代码请接入 Source Map。
+            </p>
+          </div>
+
+          {canManage ? (
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+                取消
+              </Button>
+              <Button type="submit" disabled={busy}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+                保存源码映射
+              </Button>
+            </DialogFooter>
+          ) : null}
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function CreateProjectDialog({

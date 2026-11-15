@@ -36,6 +36,11 @@ export interface Project {
   slug: string
   platform?: string
   ingestKey: string
+  repoProvider?: "github" | "gitlab" | "bitbucket" | "gitea" | "custom" | string
+  repoUrl?: string
+  repoBranch?: string
+  repoRoot?: string
+  repoLinkTemplate?: string
   createdAt: string
   updatedAt: string
 }
