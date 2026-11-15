@@ -1,0 +1,11 @@
+.git
+.gitignore
+frontend/node_modules
+frontend/dist
+backend/bin
+**/.env
+**/.env.local
+*.log
+.DS_Store
+.idea
+.vscode

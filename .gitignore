@@ -1,0 +1,22 @@
+# dependencies
+frontend/node_modules/
+backend/bin/
+
+# build output
+frontend/dist/
+*.tsbuildinfo
+
+# env & secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+!frontend/.env.example
+
+# logs / runtime
+*.log
+coverage.out
+backend/catch
+.DS_Store
+.idea/
+.vscode/

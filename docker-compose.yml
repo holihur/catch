@@ -1,0 +1,49 @@
+services:
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  app:
+    build:
+      context: .
+      args:
+        # 构建时写入浏览器 SDK；多人使用时改成 Settings 页面创建的项目密钥
+        VITE_INGEST_KEY: ${VITE_INGEST_KEY:-ck_demo_web_0000000000000000000000}
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      PORT: "8080"
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DB: ${MONGODB_DB:-catch}
+      APP_SECRET: ${APP_SECRET:-change-me-to-a-long-random-string}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-168}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ALLOW_DEV_LOGIN: ${ALLOW_DEV_LOGIN:-true}
+      SEED_DEMO: ${SEED_DEMO:-true}
+      RETENTION_DAYS: ${RETENTION_DAYS:-30}
+      INGEST_RATE_LIMIT: ${INGEST_RATE_LIMIT:-1200}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      OIDC_TENANT_SLUG: ${OIDC_TENANT_SLUG:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_ALLOWED_DOMAINS: ${OIDC_ALLOWED_DOMAINS:-}
+
+volumes:
+  mongo-data:
