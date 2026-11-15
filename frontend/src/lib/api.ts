@@ -15,6 +15,10 @@ import type {
   SourceFileResponse,
   SourceMapMeta,
   Tenant,
+  TraceDetailResponse,
+  TraceListResponse,
+  MetricsListResponse,
+  MetricSeriesResponse,
   TenantResponse,
   User,
 } from "./types"
@@ -182,6 +186,29 @@ export const api = {
     pageSize?: number
   }) => request<EventsResponse>(`/api/events${qs(params)}`),
   event: (id: string) => request<EventItem>(`/api/events/${id}`),
+
+  // traces
+  traces: (params: {
+    projectId?: string
+    range?: string
+    service?: string
+    status?: string
+    q?: string
+    page?: number
+    pageSize?: number
+  }) => request<TraceListResponse>(`/api/traces${qs(params)}`),
+  trace: (traceId: string, projectId?: string) =>
+    request<TraceDetailResponse>(`/api/traces/${traceId}${qs({ projectId })}`),
+
+  // metrics
+  metrics: (params: { projectId?: string; range?: string; service?: string; q?: string }) =>
+    request<MetricsListResponse>(`/api/metrics${qs(params)}`),
+  metricSeries: (params: {
+    projectId?: string
+    name: string
+    service?: string
+    range?: string
+  }) => request<MetricSeriesResponse>(`/api/metrics/series${qs(params)}`),
 
   // analytics
   overview: (params: { projectId?: string; range?: string }) =>

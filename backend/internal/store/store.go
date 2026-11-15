@@ -24,6 +24,8 @@ type Store struct {
 	Issues     *mongo.Collection
 	Comments   *mongo.Collection
 	SourceMaps *mongo.Collection
+	Spans      *mongo.Collection
+	Metrics    *mongo.Collection
 }
 
 // Connect opens a MongoDB connection and ensures indexes exist.
@@ -55,6 +57,8 @@ func Connect(ctx context.Context, uri, dbName string, retention time.Duration) (
 		Issues:     db.Collection("issues"),
 		Comments:   db.Collection("comments"),
 		SourceMaps: db.Collection("source_maps"),
+		Spans:      db.Collection("spans"),
+		Metrics:    db.Collection("metrics"),
 	}
 	if err := s.ensureIndexes(ctx, retention); err != nil {
 		return nil, err
@@ -97,6 +101,12 @@ func (s *Store) ensureIndexes(ctx context.Context, retention time.Duration) erro
 		{"comments", bson.D{{Key: "issueId", Value: 1}, {Key: "createdAt", Value: 1}}, idx("comments_issue_time")},
 		{"source_maps", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "release", Value: 1}, {Key: "file", Value: 1}}, idx("uniq_sourcemap").SetUnique(true)},
 		{"source_maps", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "release", Value: 1}, {Key: "updatedAt", Value: -1}}, idx("sourcemaps_release")},
+		{"spans", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "traceId", Value: 1}, {Key: "spanId", Value: 1}}, idx("uniq_span").SetUnique(true)},
+		{"spans", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "traceId", Value: 1}, {Key: "startTime", Value: 1}}, idx("spans_trace")},
+		{"spans", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "startTime", Value: -1}}, idx("spans_start")},
+		{"spans", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "service", Value: 1}, {Key: "startTime", Value: -1}}, idx("spans_service")},
+		{"metrics", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "name", Value: 1}, {Key: "timestamp", Value: -1}}, idx("metrics_name_time")},
+		{"metrics", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "timestamp", Value: -1}}, idx("metrics_time")},
 	}
 	for _, sp := range specs {
 		coll := s.DB.Collection(sp.coll)
@@ -109,20 +119,26 @@ func (s *Store) ensureIndexes(ctx context.Context, retention time.Duration) erro
 		}
 	}
 	if retention > 0 {
-		if err := s.ensureEventTTL(ctx, retention); err != nil {
+		if err := s.ensureTTL(ctx, s.Events, "events", "timestamp", "ttl_event", retention); err != nil {
+			return err
+		}
+		if err := s.ensureTTL(ctx, s.Spans, "spans", "startTime", "ttl_span", retention); err != nil {
+			return err
+		}
+		if err := s.ensureTTL(ctx, s.Metrics, "metrics", "timestamp", "ttl_metric", retention); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// ensureEventTTL keeps the events TTL aligned with RETENTION_DAYS even when the
+// ensureTTL keeps a collection TTL aligned with RETENTION_DAYS even when the
 // collection already exists from a previous deploy.
-func (s *Store) ensureEventTTL(ctx context.Context, retention time.Duration) error {
+func (s *Store) ensureTTL(ctx context.Context, coll *mongo.Collection, collName, field, indexName string, retention time.Duration) error {
 	seconds := int32(retention.Seconds())
-	cursor, err := s.Events.Indexes().List(ctx)
+	cursor, err := coll.Indexes().List(ctx)
 	if err != nil {
-		return fmt.Errorf("list event indexes: %w", err)
+		return fmt.Errorf("list %s indexes: %w", collName, err)
 	}
 	defer cursor.Close(ctx)
 	var found bool
@@ -140,7 +156,7 @@ func (s *Store) ensureEventTTL(ctx context.Context, retention time.Duration) err
 				}
 			}
 		}
-		if v, ok := keys["timestamp"]; ok && fmt.Sprint(v) == "1" {
+		if v, ok := keys[field]; ok && fmt.Sprint(v) == "1" {
 			found = true
 			if exp, ok := item["expireAfterSeconds"].(int32); ok && exp == seconds {
 				return nil
@@ -149,9 +165,9 @@ func (s *Store) ensureEventTTL(ctx context.Context, retention time.Duration) err
 				return nil
 			}
 			_ = s.DB.RunCommand(ctx, bson.D{
-				{Key: "collMod", Value: "events"},
+				{Key: "collMod", Value: collName},
 				{Key: "index", Value: bson.D{
-					{Key: "keyPattern", Value: bson.D{{Key: "timestamp", Value: 1}}},
+					{Key: "keyPattern", Value: bson.D{{Key: field, Value: 1}}},
 					{Key: "expireAfterSeconds", Value: seconds},
 				}},
 			}).Err()
@@ -161,13 +177,13 @@ func (s *Store) ensureEventTTL(ctx context.Context, retention time.Duration) err
 	if found {
 		return nil
 	}
-	opts := options.Index().SetName("ttl_event").SetExpireAfterSeconds(seconds)
-	_, err = s.Events.Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys:    bson.D{{Key: "timestamp", Value: 1}},
+	opts := options.Index().SetName(indexName).SetExpireAfterSeconds(seconds)
+	_, err = coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: field, Value: 1}},
 		Options: opts,
 	})
 	if err != nil && !mongo.IsDuplicateKeyError(err) {
-		return fmt.Errorf("create event ttl: %w", err)
+		return fmt.Errorf("create %s ttl: %w", collName, err)
 	}
 	return nil
 }

@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Env          string
 	Port         string
+	GRPCPort     string
 	PublicURL    string // URL of the API (used for OIDC redirect URIs)
 	AppURL       string // URL of the web app (used after login)
 	MongoURI     string
@@ -34,6 +35,9 @@ type Config struct {
 	OIDCClientID       string
 	OIDCClientSecret   string
 	OIDCAllowedDomains []string
+
+	GRPCTLSCert string
+	GRPCTLSKey  string
 }
 
 // staticDir auto-detects the built frontend so `go run ./cmd/server` and the
@@ -102,6 +106,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		Env:                env("APP_ENV", "development"),
 		Port:               env("PORT", "8080"),
+		GRPCPort:           env("GRPC_PORT", "4317"),
 		PublicURL:          strings.TrimRight(env("PUBLIC_URL", "http://localhost:8080"), "/"),
 		AppURL:             strings.TrimRight(env("APP_URL", "http://localhost:5173"), "/"),
 		MongoURI:           env("MONGODB_URI", "mongodb://localhost:27017"),
@@ -122,6 +127,8 @@ func Load() (Config, error) {
 		OIDCClientID:       env("OIDC_CLIENT_ID", ""),
 		OIDCClientSecret:   env("OIDC_CLIENT_SECRET", ""),
 		OIDCAllowedDomains: envList("OIDC_ALLOWED_DOMAINS"),
+		GRPCTLSCert:        env("GRPC_TLS_CERT", ""),
+		GRPCTLSKey:         env("GRPC_TLS_KEY", ""),
 	}
 
 	if cfg.CORSOrigins == nil {

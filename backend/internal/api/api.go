@@ -86,12 +86,18 @@ func (a *API) Routes() http.Handler {
 		api.Post("/ingest/sourcemaps", a.uploadSourceMapWithKey)
 		api.Post("/ingest/otlp/v1/logs", a.otlpLogs)
 		api.Post("/ingest/otlp/v1/traces", a.otlpTraces)
+		api.Post("/ingest/otlp/v1/metrics", a.otlpMetrics)
 
 		api.Group(func(pr chi.Router) {
 			pr.Use(a.authenticate)
 			pr.Get("/auth/me", a.me)
 			pr.Get("/overview", a.overview)
 			pr.Get("/insights", a.insights)
+			pr.Get("/traces", a.listTraces)
+			pr.Get("/traces/services", a.traceServices)
+			pr.Get("/traces/{traceId}", a.getTrace)
+			pr.Get("/metrics", a.listMetrics)
+			pr.Get("/metrics/series", a.metricSeries)
 			pr.Get("/events", a.listEvents)
 			pr.Get("/events/{id}", a.getEvent)
 			pr.Get("/issues", a.listIssues)
@@ -128,6 +134,7 @@ func (a *API) Routes() http.Handler {
 	// to its configured endpoint). These are key-authenticated like ingest.
 	r.Post("/v1/logs", a.otlpLogs)
 	r.Post("/v1/traces", a.otlpTraces)
+	r.Post("/v1/metrics", a.otlpMetrics)
 
 	r.NotFound(a.notFound)
 	return r

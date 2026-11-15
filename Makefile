@@ -23,6 +23,7 @@ dev-api:
 		MONGODB_URI=$${MONGODB_URI:-mongodb://127.0.0.1:27017} \
 		MONGODB_DB=$${MONGODB_DB:-catch} \
 		PORT=8091 \
+		GRPC_PORT=$${GRPC_PORT:-4317} \
 		PUBLIC_URL=http://localhost:8091 \
 		APP_URL=http://localhost:5173 \
 		CORS_ORIGINS=http://localhost:5173,http://localhost:8091 \
@@ -42,6 +43,7 @@ run: build
 	STATIC_DIR=$(CURDIR)/frontend/dist \
 		APP_ENV=development \
 		PORT=8080 \
+		GRPC_PORT=$${GRPC_PORT:-4317} \
 		PUBLIC_URL=http://localhost:8080 \
 		APP_URL=http://localhost:8080 \
 		CORS_ORIGINS=http://localhost:8080 \

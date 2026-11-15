@@ -296,18 +296,26 @@ User 456 not found
 
 ### 2.7 OpenTelemetry(OTLP) 接入
 
-Catch 原生接收 OTLP/HTTP logs 和 traces（protobuf、JSON、gzip），使用项目 Ingest Key 认证：
+Catch 原生接收 OTLP/HTTP 和 OTLP/gRPC 的 logs、traces、metrics（protobuf、JSON、gzip），使用项目 Ingest Key 认证：
 
 ```text
 POST /api/ingest/otlp/v1/logs
 POST /api/ingest/otlp/v1/traces
-# OTel 默认路径别名
+POST /api/ingest/otlp/v1/metrics
+# OTel 默认 HTTP 路径别名
 POST /v1/logs
 POST /v1/traces
+POST /v1/metrics
 X-Ingest-Key: ck_xxx
+
+# gRPC
+catch.example.com:4317
+metadata x-ingest-key=ck_xxx
 ```
 
 OTel Collector：
+
+HTTP：
 
 ```yaml
 exporters:
@@ -318,11 +326,26 @@ exporters:
     compression: gzip
 ```
 
+gRPC：
+
+```yaml
+exporters:
+  otlp/catch:
+    endpoint: catch.example.com:4317
+    headers:
+      x-ingest-key: ck_xxx
+    tls:
+      insecure: true
+```
+
 SDK 环境变量：
 
 ```bash
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_EXPORTER_OTLP_ENDPOINT=https://catch.example.com/api/ingest/otlp
+# 或：
+# OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://catch.example.com:4317
 OTEL_EXPORTER_OTLP_HEADERS=X-Ingest-Key=ck_xxx
 OTEL_SERVICE_NAME=orders-api
 OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=orders@2.3.1
@@ -332,10 +355,11 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=
 
 - `service.name`、`service.version`、`deployment.environment` 会自动映射到服务/版本/环境
 - severity ≥ ERROR 的日志和带 `exception.*` 的日志会转为 error 事件并进入问题分组
-- traces 只保留 ERROR span 或带 `exception` 事件的 span，普通 span 不入库
+- traces 的所有 span 都会入库，并在 Trace 页面展示瀑布图；ERROR span / exception 会生成 issue
+- metrics 支持 gauge、sum、histogram、exponential_histogram、summary，并在指标页面展示趋势
 - `exception.stacktrace` 可以继续走 Source Map 还原
-- 请求体上限 20MB，单次最多 5000 条日志/错误 span
-- metrics 暂不支持；gRPC 请通过 Collector 转 HTTP
+- 请求体上限 20MB；单次超过 5000 条时返回标准 `partialSuccess`，接受前 5000 条
+- gRPC 直接支持，`GRPC_PORT=0` 可关闭；TLS 使用 `GRPC_TLS_CERT` / `GRPC_TLS_KEY`
 
 ## 3. 服务端集成示例
 

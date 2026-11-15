@@ -19,6 +19,29 @@ export function formatBytes(bytes: number | undefined | null): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+export function plural(n: number | undefined | null, one: string, many?: string): string {
+  const value = n ?? 0
+  return `${formatNumber(value)} ${value === 1 ? one : many ?? `${one}s`}`
+}
+
+export function formatDuration(ms: number | undefined | null): string {
+  if (!ms || ms < 0) return "0ms"
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(2)}s`
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`
+  return `${(ms / 3_600_000).toFixed(1)}h`
+}
+
+export function formatMetricValue(value: number, unit?: string): string {
+  if (!Number.isFinite(value)) return "—"
+  let text: string
+  if (Math.abs(value) >= 1_000_000) text = `${(value / 1_000_000).toFixed(2)}M`
+  else if (Math.abs(value) >= 1000) text = `${(value / 1000).toFixed(2)}k`
+  else if (Math.abs(value) >= 100) text = value.toFixed(1)
+  else text = value.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1")
+  return unit === "1" ? text : `${text}${unit ? ` ${unit}` : ""}`
+}
+
 export function formatPercent(value: number, digits = 1): string {
   return `${(value * 100).toFixed(digits)}%`
 }

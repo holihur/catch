@@ -291,3 +291,108 @@ export interface IngestResponse {
   newIssues: number
   reopenedIssues: number
 }
+
+export interface TraceSummary {
+  traceId: string
+  rootName: string
+  service: string
+  startTime: string
+  endTime: string
+  durationMs: number
+  spanCount: number
+  errorCount: number
+  services: string[]
+}
+
+export interface SpanEvent {
+  time: string
+  name: string
+  attributes?: Record<string, unknown>
+}
+
+export interface TraceSpan {
+  id: string
+  tenantId: string
+  projectId: string
+  traceId: string
+  spanId: string
+  parentSpanId?: string
+  name: string
+  kind?: string
+  service?: string
+  environment?: string
+  release?: string
+  platform?: string
+  startTime: string
+  endTime: string
+  durationMs: number
+  status: string
+  statusMessage?: string
+  scopeName?: string
+  scopeVersion?: string
+  attributes?: Record<string, unknown>
+  resource?: Record<string, unknown>
+  events?: SpanEvent[]
+  receivedAt: string
+}
+
+export interface TraceListResponse {
+  traces: TraceSummary[]
+  total: number
+  page: number
+  pageSize: number
+  from: string
+  to: string
+  services: string[]
+}
+
+export interface TraceDetailResponse {
+  trace: TraceSummary
+  spans: TraceSpan[]
+}
+
+export interface MetricSummary {
+  name: string
+  description?: string
+  unit?: string
+  type: string
+  latest: number
+  service?: string
+  lastSeen: string
+  pointCount: number
+  attributes?: Record<string, string>
+}
+
+export interface MetricPoint {
+  id: string
+  name: string
+  type: string
+  service?: string
+  environment?: string
+  release?: string
+  timestamp: string
+  startTime?: string
+  value: number
+  count?: number
+  sum?: number
+  min?: number
+  max?: number
+  temporality?: string
+  isMonotonic?: boolean
+  attributes?: Record<string, string>
+}
+
+export interface MetricsListResponse {
+  metrics: MetricSummary[]
+  services: string[]
+  from: string
+  to: string
+}
+
+export interface MetricSeriesResponse {
+  name: string
+  service?: string
+  points: MetricPoint[]
+  from: string
+  to: string
+}

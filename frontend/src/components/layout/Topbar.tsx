@@ -28,12 +28,15 @@ const PAGE_TITLES: Record<string, string> = {
   "/": "概览",
   "/issues": "问题",
   "/logs": "日志",
+  "/traces": "Trace",
+  "/metrics": "指标",
   "/insights": "持续改进",
   "/settings": "设置",
 }
 
 function pageTitle(pathname: string) {
   if (pathname.startsWith("/issues/")) return "问题详情"
+  if (pathname.startsWith("/traces/")) return "Trace 详情"
   return PAGE_TITLES[pathname] ?? "Catch"
 }
 

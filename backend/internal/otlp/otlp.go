@@ -15,9 +15,11 @@ import (
 	"github.com/catch/catch/backend/internal/ingest"
 	"github.com/catch/catch/backend/internal/model"
 	collectorlogsv1 "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	collectormetricsv1 "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	collectortracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	logsv1 "go.opentelemetry.io/proto/otlp/logs/v1"
+	metricv1 "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resourcev1 "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -50,6 +52,21 @@ func DecodeTraces(body []byte, contentType string) (*collectortracev1.ExportTrac
 	}
 	if err := proto.Unmarshal(body, req); err != nil {
 		return nil, fmt.Errorf("invalid OTLP protobuf traces: %w", err)
+	}
+	return req, nil
+}
+
+// DecodeMetrics supports both OTLP/HTTP protobuf and OTLP/HTTP JSON.
+func DecodeMetrics(body []byte, contentType string) (*collectormetricsv1.ExportMetricsServiceRequest, error) {
+	req := &collectormetricsv1.ExportMetricsServiceRequest{}
+	if isJSON(contentType) {
+		if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(body, req); err != nil {
+			return nil, fmt.Errorf("invalid OTLP JSON metrics: %w", err)
+		}
+		return req, nil
+	}
+	if err := proto.Unmarshal(body, req); err != nil {
+		return nil, fmt.Errorf("invalid OTLP protobuf metrics: %w", err)
 	}
 	return req, nil
 }
@@ -247,6 +264,191 @@ func ConvertTraces(req *collectortracev1.ExportTraceServiceRequest, project mode
 				out = append(out, event)
 			}
 		}
+	}
+	return out
+}
+
+// ConvertSpans maps every OTLP span into a stored trace span.
+func ConvertSpans(req *collectortracev1.ExportTraceServiceRequest, project model.Project, now time.Time) []model.Span {
+	var out []model.Span
+	for _, rs := range req.GetResourceSpans() {
+		ri := resourceInformation(rs.GetResource(), project)
+		for _, ss := range rs.GetScopeSpans() {
+			for _, span := range ss.GetSpans() {
+				if len(span.GetTraceId()) == 0 || len(span.GetSpanId()) == 0 {
+					continue
+				}
+				start := timestamp(span.GetStartTimeUnixNano(), now)
+				end := timestamp(span.GetEndTimeUnixNano(), now)
+				if end.Before(start) {
+					end = start
+				}
+				status := "unset"
+				switch span.GetStatus().GetCode() {
+				case tracev1.Status_STATUS_CODE_OK:
+					status = "ok"
+				case tracev1.Status_STATUS_CODE_ERROR:
+					status = "error"
+				}
+				events := make([]model.SpanEvent, 0, len(span.GetEvents()))
+				for _, ev := range span.GetEvents() {
+					events = append(events, model.SpanEvent{
+						Time:       timestamp(ev.GetTimeUnixNano(), now),
+						Name:       ev.GetName(),
+						Attributes: attributesToMap(ev.GetAttributes()),
+					})
+				}
+				kind := strings.TrimPrefix(span.GetKind().String(), "SPAN_KIND_")
+				out = append(out, model.Span{
+					TenantID: project.TenantID, ProjectID: project.ID,
+					TraceID: hex.EncodeToString(span.GetTraceId()), SpanID: hex.EncodeToString(span.GetSpanId()),
+					ParentSpanID: hex.EncodeToString(span.GetParentSpanId()),
+					Name:         span.GetName(), Kind: strings.ToLower(kind),
+					Service: ri.service, Environment: ri.env, Release: ri.version, Platform: ri.platform,
+					StartTime: start, EndTime: end, DurationMS: end.Sub(start).Milliseconds(),
+					Status: status, StatusMessage: span.GetStatus().GetMessage(),
+					ScopeName: ss.GetScope().GetName(), ScopeVersion: ss.GetScope().GetVersion(),
+					Attributes: attributesToMap(span.GetAttributes()), Resource: ri.attrs,
+					Events: events, ReceivedAt: now,
+				})
+			}
+		}
+	}
+	return out
+}
+
+// ConvertMetrics maps OTLP metrics into stored data points. Histograms and
+// summaries use the average as Value so they can be charted uniformly.
+func ConvertMetrics(req *collectormetricsv1.ExportMetricsServiceRequest, project model.Project, now time.Time) []model.MetricPoint {
+	var out []model.MetricPoint
+	for _, rm := range req.GetResourceMetrics() {
+		ri := resourceInformation(rm.GetResource(), project)
+		for _, sm := range rm.GetScopeMetrics() {
+			for _, metric := range sm.GetMetrics() {
+				if strings.TrimSpace(metric.GetName()) == "" {
+					continue
+				}
+				base := model.MetricPoint{
+					TenantID: project.TenantID, ProjectID: project.ID,
+					Name: metric.GetName(), Description: metric.GetDescription(), Unit: metric.GetUnit(),
+					Service: ri.service, Environment: ri.env, Release: ri.version, Platform: ri.platform,
+					Resource: ri.attrs, ReceivedAt: now,
+				}
+				switch data := metric.GetData().(type) {
+				case *metricv1.Metric_Gauge:
+					base.Type = "gauge"
+					for _, dp := range data.Gauge.GetDataPoints() {
+						p := base
+						p.Timestamp = timestamp(dp.GetTimeUnixNano(), now)
+						p.StartTime = timestamp(dp.GetStartTimeUnixNano(), now)
+						p.Value = numberValue(dp)
+						p.Attributes = stringAttributes(dp.GetAttributes())
+						out = append(out, p)
+					}
+				case *metricv1.Metric_Sum:
+					base.Type = "sum"
+					base.Temporality = temporality(data.Sum.GetAggregationTemporality())
+					base.IsMonotonic = data.Sum.GetIsMonotonic()
+					for _, dp := range data.Sum.GetDataPoints() {
+						p := base
+						p.Timestamp = timestamp(dp.GetTimeUnixNano(), now)
+						p.StartTime = timestamp(dp.GetStartTimeUnixNano(), now)
+						p.Value = numberValue(dp)
+						p.Attributes = stringAttributes(dp.GetAttributes())
+						out = append(out, p)
+					}
+				case *metricv1.Metric_Histogram:
+					base.Type = "histogram"
+					base.Temporality = temporality(data.Histogram.GetAggregationTemporality())
+					for _, dp := range data.Histogram.GetDataPoints() {
+						p := base
+						p.Timestamp = timestamp(dp.GetTimeUnixNano(), now)
+						p.StartTime = timestamp(dp.GetStartTimeUnixNano(), now)
+						p.Count = dp.GetCount()
+						if dp.Sum != nil {
+							p.Sum = *dp.Sum
+						}
+						p.Value = average(p.Sum, p.Count)
+						p.Min = dp.Min
+						p.Max = dp.Max
+						p.Attributes = stringAttributes(dp.GetAttributes())
+						out = append(out, p)
+					}
+				case *metricv1.Metric_ExponentialHistogram:
+					base.Type = "exponential_histogram"
+					base.Temporality = temporality(data.ExponentialHistogram.GetAggregationTemporality())
+					for _, dp := range data.ExponentialHistogram.GetDataPoints() {
+						p := base
+						p.Timestamp = timestamp(dp.GetTimeUnixNano(), now)
+						p.StartTime = timestamp(dp.GetStartTimeUnixNano(), now)
+						p.Count = dp.GetCount()
+						if dp.Sum != nil {
+							p.Sum = *dp.Sum
+						}
+						p.Value = average(p.Sum, p.Count)
+						p.Min = dp.Min
+						p.Max = dp.Max
+						p.Attributes = stringAttributes(dp.GetAttributes())
+						out = append(out, p)
+					}
+				case *metricv1.Metric_Summary:
+					base.Type = "summary"
+					for _, dp := range data.Summary.GetDataPoints() {
+						p := base
+						p.Timestamp = timestamp(dp.GetTimeUnixNano(), now)
+						p.StartTime = timestamp(dp.GetStartTimeUnixNano(), now)
+						p.Count = dp.GetCount()
+						p.Sum = dp.GetSum()
+						p.Value = average(p.Sum, p.Count)
+						p.Attributes = stringAttributes(dp.GetAttributes())
+						out = append(out, p)
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+func numberValue(dp *metricv1.NumberDataPoint) float64 {
+	switch v := dp.GetValue().(type) {
+	case *metricv1.NumberDataPoint_AsInt:
+		return float64(v.AsInt)
+	case *metricv1.NumberDataPoint_AsDouble:
+		return v.AsDouble
+	}
+	return 0
+}
+
+func average(sum float64, count uint64) float64 {
+	if count == 0 {
+		return sum
+	}
+	return sum / float64(count)
+}
+
+func temporality(t metricv1.AggregationTemporality) string {
+	switch t {
+	case metricv1.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA:
+		return "delta"
+	case metricv1.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE:
+		return "cumulative"
+	}
+	return ""
+}
+
+func stringAttributes(attrs []*commonv1.KeyValue) map[string]string {
+	out := map[string]string{}
+	for _, kv := range attrs {
+		if kv == nil || kv.GetKey() == "" {
+			continue
+		}
+		if v := anyValueString(kv.GetValue()); v != "" {
+			out[ingest.Truncate(kv.GetKey(), 64)] = ingest.Truncate(v, 500)
+		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

@@ -21,6 +21,15 @@ const IssueDetailPage = React.lazy(() =>
 const LogsPage = React.lazy(() =>
   import("@/pages/LogsPage").then((m) => ({ default: m.LogsPage })),
 )
+const TracesPage = React.lazy(() =>
+  import("@/pages/TracesPage").then((m) => ({ default: m.TracesPage })),
+)
+const TraceDetailPage = React.lazy(() =>
+  import("@/pages/TraceDetailPage").then((m) => ({ default: m.TraceDetailPage })),
+)
+const MetricsPage = React.lazy(() =>
+  import("@/pages/MetricsPage").then((m) => ({ default: m.MetricsPage })),
+)
 const InsightsPage = React.lazy(() =>
   import("@/pages/InsightsPage").then((m) => ({ default: m.InsightsPage })),
 )
@@ -51,6 +60,9 @@ export function App() {
         <Route path="issues" element={<IssuesPage />} />
         <Route path="issues/:id" element={<IssueDetailPage />} />
         <Route path="logs" element={<LogsPage />} />
+        <Route path="traces" element={<TracesPage />} />
+        <Route path="traces/:id" element={<TraceDetailPage />} />
+        <Route path="metrics" element={<MetricsPage />} />
         <Route path="insights" element={<InsightsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />

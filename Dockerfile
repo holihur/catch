@@ -33,7 +33,7 @@ COPY --from=web /src/frontend/dist /app/web
 USER catch
 ENV STATIC_DIR=/app/web \
     PORT=8080
-EXPOSE 8080
+EXPOSE 8080 4317
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD wget -qO- http://127.0.0.1:8080/api/health || exit 1
 ENTRYPOINT ["/app/catch"]

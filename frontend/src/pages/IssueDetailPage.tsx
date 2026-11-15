@@ -556,6 +556,14 @@ function EventSummary({ event, project }: { event: EventItem; project: Project |
             查看源码 <ExternalLink className="size-3" />
           </button>
         ) : null}
+        {event.tags?.trace_id ? (
+          <Link
+            to={`/traces/${event.tags.trace_id}`}
+            className="text-primary inline-flex items-center gap-1 hover:underline"
+          >
+            查看 Trace <ExternalLink className="size-3" />
+          </Link>
+        ) : null}
       </div>
     </div>
   )

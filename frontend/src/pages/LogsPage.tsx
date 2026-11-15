@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Link } from "react-router-dom"
-import { Code2, ExternalLink, RefreshCw, Search, ScrollText } from "lucide-react"
+import { Code2, ExternalLink, RefreshCw, Search, ScrollText, Waypoints } from "lucide-react"
 
 import { api } from "@/lib/api"
 import type { EventItem, EventsResponse, Project } from "@/lib/types"
@@ -317,6 +317,13 @@ function EventDetailDialog({
             </DialogHeader>
 
             <div className="space-y-4 text-sm">
+              {event.tags?.trace_id ? (
+                <Button asChild variant="outline" size="sm" className="w-fit">
+                  <Link to={`/traces/${event.tags.trace_id}`}>
+                    <Waypoints className="size-3.5" /> 查看 Trace
+                  </Link>
+                </Button>
+              ) : null}
               <pre className="bg-muted/40 scrollbar-thin max-h-56 overflow-auto rounded-xl p-3 text-xs whitespace-pre-wrap">
                 {event.message}
               </pre>

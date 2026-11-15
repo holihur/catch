@@ -1,6 +1,6 @@
 import * as React from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
-import { Activity, Bug, ChevronRight, LayoutDashboard, ScrollText, Settings, Sparkles, X } from "lucide-react"
+import { Activity, Bug, ChevronRight, Gauge, LayoutDashboard, ScrollText, Settings, Sparkles, Waypoints, X } from "lucide-react"
 
 import { cn, relativeTime } from "@/lib/utils"
 import { useAuth } from "@/context/AuthContext"
@@ -16,6 +16,8 @@ const NAV = [
       { to: "/", label: "概览", icon: LayoutDashboard, end: true },
       { to: "/issues", label: "问题", icon: Bug },
       { to: "/logs", label: "日志", icon: ScrollText },
+      { to: "/traces", label: "Trace", icon: Waypoints },
+      { to: "/metrics", label: "指标", icon: Gauge },
     ],
   },
   {

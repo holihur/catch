@@ -195,6 +195,68 @@ type Comment struct {
 	CreatedAt  time.Time          `bson:"createdAt" json:"createdAt"`
 }
 
+// Span is one OpenTelemetry trace span. All spans are stored for the trace UI.
+type Span struct {
+	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	TenantID      primitive.ObjectID `bson:"tenantId" json:"tenantId"`
+	ProjectID     primitive.ObjectID `bson:"projectId" json:"projectId"`
+	TraceID       string             `bson:"traceId" json:"traceId"`
+	SpanID        string             `bson:"spanId" json:"spanId"`
+	ParentSpanID  string             `bson:"parentSpanId,omitempty" json:"parentSpanId,omitempty"`
+	Name          string             `bson:"name" json:"name"`
+	Kind          string             `bson:"kind,omitempty" json:"kind,omitempty"`
+	Service       string             `bson:"service,omitempty" json:"service,omitempty"`
+	Environment   string             `bson:"environment,omitempty" json:"environment,omitempty"`
+	Release       string             `bson:"release,omitempty" json:"release,omitempty"`
+	Platform      string             `bson:"platform,omitempty" json:"platform,omitempty"`
+	StartTime     time.Time          `bson:"startTime" json:"startTime"`
+	EndTime       time.Time          `bson:"endTime" json:"endTime"`
+	DurationMS    int64              `bson:"durationMs" json:"durationMs"`
+	Status        string             `bson:"status" json:"status"`
+	StatusMessage string             `bson:"statusMessage,omitempty" json:"statusMessage,omitempty"`
+	ScopeName     string             `bson:"scopeName,omitempty" json:"scopeName,omitempty"`
+	ScopeVersion  string             `bson:"scopeVersion,omitempty" json:"scopeVersion,omitempty"`
+	Attributes    map[string]any     `bson:"attributes,omitempty" json:"attributes,omitempty"`
+	Resource      map[string]any     `bson:"resource,omitempty" json:"resource,omitempty"`
+	Events        []SpanEvent        `bson:"events,omitempty" json:"events,omitempty"`
+	ReceivedAt    time.Time          `bson:"receivedAt" json:"receivedAt"`
+}
+
+// SpanEvent is an annotated event inside a span (usually an exception).
+type SpanEvent struct {
+	Time       time.Time      `bson:"time" json:"time"`
+	Name       string         `bson:"name" json:"name"`
+	Attributes map[string]any `bson:"attributes,omitempty" json:"attributes,omitempty"`
+}
+
+// MetricPoint is one OTLP metric data point. Histograms/summaries keep count
+// and sum; Value is the average for charting.
+type MetricPoint struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	TenantID    primitive.ObjectID `bson:"tenantId" json:"tenantId"`
+	ProjectID   primitive.ObjectID `bson:"projectId" json:"projectId"`
+	Name        string             `bson:"name" json:"name"`
+	Description string             `bson:"description,omitempty" json:"description,omitempty"`
+	Unit        string             `bson:"unit,omitempty" json:"unit,omitempty"`
+	Type        string             `bson:"type" json:"type"`
+	Service     string             `bson:"service,omitempty" json:"service,omitempty"`
+	Environment string             `bson:"environment,omitempty" json:"environment,omitempty"`
+	Release     string             `bson:"release,omitempty" json:"release,omitempty"`
+	Platform    string             `bson:"platform,omitempty" json:"platform,omitempty"`
+	Timestamp   time.Time          `bson:"timestamp" json:"timestamp"`
+	StartTime   time.Time          `bson:"startTime,omitempty" json:"startTime,omitempty"`
+	Value       float64            `bson:"value" json:"value"`
+	Count       uint64             `bson:"count,omitempty" json:"count,omitempty"`
+	Sum         float64            `bson:"sum,omitempty" json:"sum,omitempty"`
+	Min         *float64           `bson:"min,omitempty" json:"min,omitempty"`
+	Max         *float64           `bson:"max,omitempty" json:"max,omitempty"`
+	Temporality string             `bson:"temporality,omitempty" json:"temporality,omitempty"`
+	IsMonotonic bool               `bson:"isMonotonic,omitempty" json:"isMonotonic,omitempty"`
+	Attributes  map[string]string  `bson:"attributes,omitempty" json:"attributes,omitempty"`
+	Resource    map[string]any     `bson:"resource,omitempty" json:"resource,omitempty"`
+	ReceivedAt  time.Time          `bson:"receivedAt" json:"receivedAt"`
+}
+
 // SourceMap stores a gzipped source map for a generated bundle. Content is
 // never serialized to API responses.
 type SourceMap struct {

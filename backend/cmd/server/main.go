@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +16,7 @@ import (
 	"github.com/catch/catch/backend/internal/logging"
 	"github.com/catch/catch/backend/internal/seed"
 	"github.com/catch/catch/backend/internal/store"
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -56,6 +58,28 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	var grpcServer *grpc.Server
+	if cfg.GRPCPort != "" && cfg.GRPCPort != "0" {
+		gs, gerr := a.NewGRPCServer()
+		if gerr != nil {
+			log.Error("grpc server initialization failed", "error", gerr)
+		} else {
+			lis, lerr := net.Listen("tcp", ":"+cfg.GRPCPort)
+			if lerr != nil {
+				log.Error("grpc listen failed", "port", cfg.GRPCPort, "error", lerr)
+			} else {
+				grpcServer = gs
+				go func() {
+					log.Info("catch otlp grpc listening", "port", cfg.GRPCPort)
+					if serveErr := gs.Serve(lis); serveErr != nil {
+						log.Error("grpc serve failed", "error", serveErr)
+					}
+				}()
+			}
+		}
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           a.Routes(),
@@ -85,6 +109,19 @@ func run() error {
 		return err
 	case s := <-sig:
 		log.Info("shutting down", "signal", s.String())
+	}
+
+	if grpcServer != nil {
+		stopped := make(chan struct{})
+		go func() {
+			grpcServer.GracefulStop()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-time.After(10 * time.Second):
+			grpcServer.Stop()
+		}
 	}
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)

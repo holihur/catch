@@ -6,9 +6,11 @@ import (
 
 	"github.com/catch/catch/backend/internal/model"
 	collectorlogsv1 "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	collectormetricsv1 "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	collectortracev1 "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	logsv1 "go.opentelemetry.io/proto/otlp/logs/v1"
+	metricv1 "go.opentelemetry.io/proto/otlp/metrics/v1"
 	resourcev1 "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -192,5 +194,79 @@ func TestConvertTraceSpanAttributeException(t *testing.T) {
 	}
 	if events[0].ErrorType != "AttributeError" || events[0].Request == nil || events[0].Request.DurationMS != 1000 {
 		t.Fatalf("unexpected event: %+v", events[0])
+	}
+}
+
+func TestConvertSpans(t *testing.T) {
+	project := model.Project{Name: "orders"}
+	req := &collectortracev1.ExportTraceServiceRequest{
+		ResourceSpans: []*tracev1.ResourceSpans{{
+			Resource: &resourcev1.Resource{Attributes: []*commonv1.KeyValue{str("service.name", "orders-api")}},
+			ScopeSpans: []*tracev1.ScopeSpans{{
+				Scope: &commonv1.InstrumentationScope{Name: "http", Version: "1.0"},
+				Spans: []*tracev1.Span{{
+					TraceId: []byte{1, 2}, SpanId: []byte{3, 4}, ParentSpanId: []byte{5, 6},
+					Name: "root", Kind: tracev1.Span_SPAN_KIND_SERVER,
+					StartTimeUnixNano: uint64(time.Now().Add(-time.Second).UnixNano()),
+					EndTimeUnixNano:   uint64(time.Now().UnixNano()),
+					Status:            &tracev1.Status{Code: tracev1.Status_STATUS_CODE_ERROR, Message: "boom"},
+					Attributes:        []*commonv1.KeyValue{str("http.route", "/orders")},
+					Events: []*tracev1.Span_Event{{
+						TimeUnixNano: uint64(time.Now().UnixNano()), Name: "exception",
+						Attributes: []*commonv1.KeyValue{str("exception.type", "Error")},
+					}},
+				}},
+			}},
+		}},
+	}
+	spans := ConvertSpans(req, project, time.Now())
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 span, got %d", len(spans))
+	}
+	span := spans[0]
+	if span.TraceID != "0102" || span.SpanID != "0304" || span.ParentSpanID != "0506" {
+		t.Fatalf("unexpected span IDs: %+v", span)
+	}
+	if span.Service != "orders-api" || span.Status != "error" || span.ScopeName != "http" || span.DurationMS < 900 {
+		t.Fatalf("unexpected span mapping: %+v", span)
+	}
+	if len(span.Events) != 1 || span.Events[0].Name != "exception" {
+		t.Fatalf("unexpected span events: %+v", span.Events)
+	}
+}
+
+func TestConvertMetrics(t *testing.T) {
+	project := model.Project{Name: "orders"}
+	now := uint64(time.Now().UnixNano())
+	req := &collectormetricsv1.ExportMetricsServiceRequest{
+		ResourceMetrics: []*metricv1.ResourceMetrics{{
+			Resource: &resourcev1.Resource{Attributes: []*commonv1.KeyValue{str("service.name", "orders-api")}},
+			ScopeMetrics: []*metricv1.ScopeMetrics{{
+				Metrics: []*metricv1.Metric{
+					{Name: "cpu.usage", Unit: "%", Data: &metricv1.Metric_Gauge{Gauge: &metricv1.Gauge{DataPoints: []*metricv1.NumberDataPoint{{
+						TimeUnixNano: now, Value: &metricv1.NumberDataPoint_AsDouble{AsDouble: 42.5}, Attributes: []*commonv1.KeyValue{str("host", "a")},
+					}}}}},
+					{Name: "requests", Unit: "1", Data: &metricv1.Metric_Sum{Sum: &metricv1.Sum{AggregationTemporality: metricv1.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE, IsMonotonic: true, DataPoints: []*metricv1.NumberDataPoint{{
+						TimeUnixNano: now, Value: &metricv1.NumberDataPoint_AsInt{AsInt: 10},
+					}}}}},
+					{Name: "latency", Unit: "ms", Data: &metricv1.Metric_Histogram{Histogram: &metricv1.Histogram{AggregationTemporality: metricv1.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA, DataPoints: []*metricv1.HistogramDataPoint{{
+						TimeUnixNano: now, Count: 2, Sum: proto.Float64(100),
+					}}}}},
+				},
+			}},
+		}},
+	}
+	points := ConvertMetrics(req, project, time.Now())
+	if len(points) != 3 {
+		t.Fatalf("expected 3 metric points, got %d", len(points))
+	}
+	if points[0].Name != "cpu.usage" || points[0].Value != 42.5 || points[0].Type != "gauge" || points[0].Attributes["host"] != "a" {
+		t.Fatalf("unexpected gauge: %+v", points[0])
+	}
+	if points[1].Value != 10 || points[1].Type != "sum" || !points[1].IsMonotonic || points[1].Temporality != "cumulative" {
+		t.Fatalf("unexpected sum: %+v", points[1])
+	}
+	if points[2].Value != 50 || points[2].Count != 2 || points[2].Type != "histogram" {
+		t.Fatalf("unexpected histogram: %+v", points[2])
 	}
 }
