@@ -294,6 +294,45 @@ User 456 not found
 
 ---
 
+## 2.7 OpenTelemetry(OTLP) 接入
+
+Catch 原生接收 OTLP/HTTP logs 和 traces（protobuf、JSON、gzip），使用项目 Ingest Key 认证：
+
+```text
+POST /api/ingest/otlp/v1/logs
+POST /api/ingest/otlp/v1/traces
+X-Ingest-Key: ck_xxx
+```
+
+OTel Collector：
+
+```yaml
+exporters:
+  otlphttp/catch:
+    endpoint: https://catch.example.com/api/ingest/otlp
+    headers:
+      X-Ingest-Key: ck_xxx
+    compression: gzip
+```
+
+SDK 环境变量：
+
+```bash
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=https://catch.example.com/api/ingest/otlp
+OTEL_EXPORTER_OTLP_HEADERS=X-Ingest-Key=ck_xxx
+OTEL_SERVICE_NAME=orders-api
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=orders@2.3.1
+```
+
+说明：
+
+- `service.name`、`service.version`、`deployment.environment` 会自动映射到服务/版本/环境
+- severity ≥ ERROR 的日志和带 `exception.*` 的日志会转为 error 事件并进入问题分组
+- traces 只保留 ERROR span 或带 `exception` 事件的 span，普通 span 不入库
+- `exception.stacktrace` 可以继续走 Source Map 还原
+- metrics 暂不支持；gRPC 请通过 Collector 转 HTTP
+
 ## 3. 服务端集成示例
 
 ### 3.1 Go：简单 reporter

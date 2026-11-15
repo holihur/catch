@@ -84,6 +84,10 @@ func (a *API) Routes() http.Handler {
 		// Ingestion is authenticated by project ingest key, not a session.
 		api.Post("/ingest", a.ingest)
 		api.Post("/ingest/sourcemaps", a.uploadSourceMapWithKey)
+		api.Post("/ingest/otlp/v1/logs", a.otlpLogs)
+		api.Post("/ingest/otlp/v1/traces", a.otlpTraces)
+		api.Post("/v1/logs", a.otlpLogs)
+		api.Post("/v1/traces", a.otlpTraces)
 
 		api.Group(func(pr chi.Router) {
 			pr.Use(a.authenticate)

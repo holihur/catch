@@ -19,6 +19,7 @@ Catch 是一个多租户日志与错误可观测平台：前端 SDK 和后端服
 | 持续改进 | 健康分、MTTR、回归数、长期未复现问题、错误环比、激增检测、规则化改进建议 |
 | 源码跳转 | 在 Catch 内直接查看堆栈对应源码并高亮行号；Source Map 缺失时可跳转 GitHub/GitLab/Bitbucket/Gitea |
 | Source Map | 上传构建产物 Source Map，服务端在采集时把压缩堆栈还原为原始 TS/TSX/源文件行列 |
+| OpenTelemetry | OTLP/HTTP logs + error spans（protobuf/JSON/gzip），自动映射 resource、severity 和 exception |
 | 设置 | 项目与采集密钥、密钥轮换、成员角色、租户信息、OIDC 配置、SDK 接入示例与一键测试 |
 | 可观测性 | 后端请求日志/panic 自动落库；前端 SDK 捕获 `window.onerror`、`unhandledrejection`、React 错误边界和 API 5xx |
 
@@ -328,7 +329,82 @@ VITE_RELEASE=web@1.2.3
 - 失败最多重试 8 次，队列上限 200，绝不阻塞业务请求
 - 设置页“测试日志 / 测试错误”可验证采集链路
 
-### 后端日志自动捕获
+### OpenTelemetry 接入
+
+Catch 原生接收 **OTLP/HTTP**，支持 protobuf、JSON、gzip；gRPC 请通过 OTel Collector 桥接。
+
+```http
+POST /api/ingest/otlp/v1/logs
+POST /api/ingest/otlp/v1/traces
+X-Ingest-Key: ck_xxx
+```
+
+为兼容 OTel 默认路径，也支持：
+
+```text
+POST /v1/logs
+POST /v1/traces
+```
+
+### Collector 配置
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+exporters:
+  otlphttp/catch:
+    endpoint: https://catch.example.com/api/ingest/otlp
+    headers:
+      X-Ingest-Key: ck_xxx
+    compression: gzip
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [otlphttp/catch]
+    traces:
+      receivers: [otlp]
+      exporters: [otlphttp/catch]
+```
+
+`otlphttp` 会自动拼接 `/v1/logs` 和 `/v1/traces`。
+
+### SDK 环境变量
+
+```bash
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=https://catch.example.com/api/ingest/otlp
+OTEL_EXPORTER_OTLP_HEADERS=X-Ingest-Key=ck_xxx
+OTEL_SERVICE_NAME=orders-api
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=orders@2.3.1
+```
+
+### 映射规则
+
+| OTel 字段 | Catch |
+| --- | --- |
+| `resource.service.name` | 服务名 |
+| `resource.service.version` | release |
+| `resource.deployment.environment` 或 `deployment.environment.name` | 环境 |
+| `resource.telemetry.sdk.language` | platform |
+| `severityNumber` / `severityText` | debug / info / warn / error / fatal |
+| severity ≥ ERROR 或存在 `exception.*` | error 事件并进入问题分组 |
+| `exception.type` / `exception.message` / `exception.stacktrace` | 错误类型 / 消息 / 堆栈（可继续走 Source Map 还原） |
+| `trace_id` / `span_id` / HTTP 属性 | 标签与上下文 |
+| `enduser.*` / `user.*` | 事件用户 |
+
+- **Logs**：所有日志都会入库；ERROR/FATAL 或异常记录会生成 issue
+- **Traces**：只保留状态为 ERROR 或包含 `exception` 事件的 span；普通 span 不入库
+- **Metrics**：暂不接收
+- 请求体上限 20MB；同样受项目级 ingest 速率限制
+- OTLP 的 `service.version` 必须与 Source Map 的 release 一致，才能还原压缩堆栈
+
+## 后端日志自动捕获
 
 Go 后端使用 slog 双写：
 
@@ -440,6 +516,10 @@ CATCH_RELEASE=web@1.2.3 \
 | POST | `/api/auth/logout` | 注销并删除服务端会话 |
 | GET | `/api/auth/me` | 当前用户、租户、权限 |
 | POST | `/api/ingest` | 采集日志/错误（Ingest Key） |
+| POST | `/api/ingest/otlp/v1/logs` | OTLP/HTTP 日志（protobuf/JSON/gzip） |
+| POST | `/api/ingest/otlp/v1/traces` | OTLP/HTTP 错误 span |
+| POST | `/v1/logs` | OTLP 默认路径别名 |
+| POST | `/v1/traces` | OTLP 默认路径别名 |
 | GET | `/api/overview` | 概览统计 + 时间序列 |
 | GET | `/api/insights` | 健康分、改进指标与建议 |
 | GET | `/api/issues` | 问题列表（状态/级别/来源/搜索/排序/分页） |
@@ -507,6 +587,7 @@ cd frontend && pnpm typecheck && pnpm build
 - Playwright 页面冒烟：登录、概览、问题详情、日志、持续改进、设置、OIDC 登录
 - 前端 SDK 实际写入：页面浏览日志、React 渲染错误、设置页测试事件
 - 独立 SDK 第三方联调：从 `http://localhost:3000` 跨域加载 `/catch-sdk.js`，上报日志和错误，并在 Catch 中检索到事件与问题
+- OTLP/HTTP：JSON、protobuf、gzip 日志和错误 span 均实测入库；severity、resource、exception、trace/span ID 映射正确
 
 ---
 
@@ -524,6 +605,7 @@ catch/
 │       ├── ingest/           # 指纹归一化、级别映射
 │       ├── logging/          # slog stdout + MongoDB 双写（异步队列）
 │       ├── model/            # 领域模型
+│       ├── otlp/             # OTLP logs/error spans → Catch events
 │       ├── reqctx/           # 请求上下文身份/trace
 │       ├── secure/           # AES-GCM、随机 token、SHA-256
 │       ├── seed/             # 演示租户/项目/7 天数据
@@ -550,5 +632,6 @@ catch/
 
 - OIDC `roles` claim 目前未映射为 Catch 角色；可增加“租户级 claim → 角色”映射策略。
 - 尚未实现告警通道（Webhook/邮件/钉钉）与错误预算。
+- OTLP 暂不支持 metrics，也不存储完整 trace 详情；只把错误 span 转为问题。
 - 问题合并、相似问题推荐、自动静音规则可作为下一步。
 - 日志检索目前使用正则 + 分页；数据量增大后建议引入全文索引或专用日志存储。

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -153,7 +154,6 @@ func (a *API) ingest(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	events := make([]model.Event, 0, len(rawEvents))
-	created, reopened := 0, 0
 	for i, raw := range rawEvents {
 		var in ingestEvent
 		if err := json.Unmarshal(raw, &in); err != nil {
@@ -167,10 +167,28 @@ func (a *API) ingest(w http.ResponseWriter, r *http.Request) {
 				err.Error(), map[string]any{"index": i})
 			return
 		}
+		events = append(events, e)
+	}
+	created, reopened, err := a.persistEvents(r.Context(), tenant, project, events)
+	if err != nil {
+		a.logger.Slog.ErrorContext(r.Context(), "persist events failed", "error", err, "projectId", project.ID.Hex())
+		httpx.Error(w, http.StatusInternalServerError, "internal_error", "无法保存事件")
+		return
+	}
+	httpx.JSON(w, http.StatusAccepted, map[string]any{
+		"accepted": len(events), "newIssues": created, "reopenedIssues": reopened,
+	})
+}
+
+// persistEvents resolves source maps, groups errors into issues and inserts the
+// event batch. It is shared by the native ingest API and OTLP receivers.
+func (a *API) persistEvents(ctx context.Context, tenant model.Tenant, project model.Project, events []model.Event) (created, reopened int, err error) {
+	for i := range events {
+		e := &events[i]
 		if e.Stack != "" {
-			resolved, changed, smErr := a.sourcemaps.ResolveStack(r.Context(), tenant.ID, project.ID, e.Release, e.Stack)
+			resolved, changed, smErr := a.sourcemaps.ResolveStack(ctx, tenant.ID, project.ID, e.Release, e.Stack)
 			if smErr != nil {
-				a.logger.Slog.WarnContext(r.Context(), "source map resolve failed",
+				a.logger.Slog.WarnContext(ctx, "source map resolve failed",
 					"projectId", project.ID.Hex(), "release", e.Release, "error", smErr)
 			} else if changed {
 				e.Stack = resolved
@@ -184,16 +202,14 @@ func (a *API) ingest(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if e.Kind == model.KindError {
-			issue, isNew, isReopened, err := a.store.UpsertIssue(r.Context(), model.Issue{
+			issue, isNew, isReopened, ierr := a.store.UpsertIssue(ctx, model.Issue{
 				TenantID: tenant.ID, ProjectID: project.ID,
 				Fingerprint: e.Fingerprint, Title: ingest.Title(e.ErrorType, e.Message),
 				Culprit: e.Culprit, Level: e.Level, Source: e.Source,
 				FirstSeen: e.Timestamp, LastSeen: e.Timestamp,
 			})
-			if err != nil {
-				a.logger.Slog.ErrorContext(r.Context(), "upsert issue failed", "error", err, "projectId", project.ID.Hex())
-				httpx.Error(w, http.StatusInternalServerError, "internal_error", "无法归并错误")
-				return
+			if ierr != nil {
+				return created, reopened, ierr
 			}
 			e.IssueID = issue.ID
 			if isNew {
@@ -203,16 +219,11 @@ func (a *API) ingest(w http.ResponseWriter, r *http.Request) {
 				reopened++
 			}
 		}
-		events = append(events, e)
 	}
-	if err := a.store.InsertEvents(r.Context(), events); err != nil {
-		a.logger.Slog.ErrorContext(r.Context(), "insert events failed", "error", err, "count", len(events))
-		httpx.Error(w, http.StatusInternalServerError, "internal_error", "无法保存事件")
-		return
+	if err := a.store.InsertEvents(ctx, events); err != nil {
+		return created, reopened, err
 	}
-	httpx.JSON(w, http.StatusAccepted, map[string]any{
-		"accepted": len(events), "newIssues": created, "reopenedIssues": reopened,
-	})
+	return created, reopened, nil
 }
 
 func (a *API) normalizeEvent(tenant model.Tenant, project model.Project, in ingestEvent, now time.Time) (model.Event, error) {
