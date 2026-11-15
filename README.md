@@ -98,6 +98,8 @@ make run       # 或直接 ./backend/bin/catch
 
 打开 <http://localhost:8080>。Go 会：
 
+- 托管 `/catch-sdk.js`（任意第三方 origin 可加载，`Access-Control-Allow-Origin: *`）
+
 - 从 `STATIC_DIR`（未设置时自动探测 `web`、`../frontend/dist`、`frontend/dist`、`/app/web`）读取前端
 - 对 `/assets/*` 输出长期缓存头，其余 SPA 路由回退到 `index.html`
 - 同源提供 `/api/*`，无需额外 Nginx
@@ -119,6 +121,19 @@ docker compose up --build
 > 演示种子会创建租户 `acme`、项目 `Web App` / `Orders API`、开发账号 `demo@acme.dev`，并生成 7 天演示数据。
 > 演示采集密钥固定为 `ck_demo_web_0000000000000000000000` 与 `ck_demo_api_0000000000000000000000`。
 > **生产环境请关闭 `SEED_DEMO` 和 `ALLOW_DEV_LOGIN`，修改 `APP_SECRET`，并在 Settings 中轮换密钥。**
+
+### 公网访问
+
+如果通过公网 IP/域名访问 Catch，需要把浏览器实际使用的 origin 加入 `CORS_ORIGINS`，否则开发登录等写操作会返回“请求来源不被允许”：
+
+```bash
+PUBLIC_URL=http://47.95.200.101:8091
+APP_URL=http://47.95.200.101:8091
+CORS_ORIGINS=http://47.95.200.101:8091,http://localhost:8091
+```
+
+> OIDC 回调用的是 `PUBLIC_URL`。UCenter 对**非 localhost** 的 `http://` redirect URI 会拒绝，公网 OIDC 测试需要 HTTPS 域名（Caddy/Nginx），或继续在 localhost/SSH 隧道中测试。
+> `/api/ingest` 和 `/catch-sdk.js` 已按公开采集接口设计，允许任意第三方 origin。
 
 ---
 
@@ -167,6 +182,8 @@ OIDC_ALLOWED_DOMAINS=acme.test
 | 测试用户 | `owner@acme.test` / `Password123!` |
 | 回调地址 | `http://localhost:8091/api/auth/oidc/callback`（Go 托管 :8080 时对应改成 :8080） |
 | 允许域名 | `acme.test` |
+
+另外使用独立创建的第二个 UCenter client（不同 Client ID/Secret）重复了完整登录流程，同样成功，确认 Catch 不依赖固定 OIDC key；测试后已恢复为文档中的 `app_demo_acme`。
 
 实测结果：
 
@@ -279,7 +296,22 @@ Ingest Key 是**只写密钥**，可安全放入浏览器构建产物；它只�
 
 ### 前端 SDK
 
-`frontend/src/lib/telemetry.ts` 是内置 SDK：
+第三方 Web 应用可以直接使用由 Catch 托管的独立 SDK：
+
+```html
+<script
+  src="https://catch.example.com/catch-sdk.js"
+  data-key="ck_xxx"
+  data-env="production"
+  data-release="web@1.2.3"
+  data-service="partner-portal"
+  crossorigin="anonymous"></script>
+```
+
+完整的第三方接入指南（浏览器 SDK、Go/Node/Python 后端示例、事件字段、多租户与排障）见
+**[docs/INTEGRATION.md](docs/INTEGRATION.md)**。
+
+Catch 控制台自身使用的 React SDK 位于 `frontend/src/lib/telemetry.ts`：
 
 ```bash
 VITE_INGEST_KEY=ck_demo_web_0000000000000000000000
@@ -401,6 +433,7 @@ cd frontend && pnpm typecheck && pnpm build
 - UCenter OIDC 端到端：授权 → 登录 → 回调 → ID Token 校验 → 会话 → 受保护 API
 - Playwright 页面冒烟：登录、概览、问题详情、日志、持续改进、设置、OIDC 登录
 - 前端 SDK 实际写入：页面浏览日志、React 渲染错误、设置页测试事件
+- 独立 SDK 第三方联调：从 `http://localhost:3000` 跨域加载 `/catch-sdk.js`，上报日志和错误，并在 Catch 中检索到事件与问题
 
 ---
 
@@ -427,7 +460,9 @@ catch/
 │   ├── src/components/       # 布局、图表、通用组件
 │   ├── src/pages/            # 登录/概览/问题/日志/改进/设置
 │   ├── src/lib/              # api、telemetry、types、utils
-│   └── src/context/          # 认证、项目选择
+│   ├── src/context/          # 认证、项目选择
+│   └── public/catch-sdk.js   # 可被第三方页面直接引入的独立浏览器 SDK
+├── docs/INTEGRATION.md       # 第三方系统接入指南（SDK/HTTP/Go/Node/Python）
 ├── Dockerfile                # Node 构建前端 + Go 编译 + 单镜像运行
 ├── docker-compose.yml
 ├── Makefile
