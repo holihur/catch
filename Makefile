@@ -33,7 +33,9 @@ dev-web:
 	cd frontend && pnpm dev
 
 build:
-	cd frontend && pnpm install --frozen-lockfile && pnpm build
+	cd frontend && \
+		NODE_OPTIONS=$${NODE_OPTIONS:---max-old-space-size=512} pnpm install --frozen-lockfile && \
+		NODE_OPTIONS=$${NODE_OPTIONS:---max-old-space-size=512} pnpm build
 	cd backend && mkdir -p bin && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/catch ./cmd/server
 
 run: build
