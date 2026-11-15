@@ -14,6 +14,7 @@ import (
 
 	"github.com/catch/catch/backend/internal/httpx"
 	"github.com/catch/catch/backend/internal/model"
+	"github.com/catch/catch/backend/internal/reqctx"
 	"github.com/catch/catch/backend/internal/store"
 	gosourcemap "github.com/go-sourcemap/sourcemap"
 )
@@ -112,7 +113,38 @@ func (a *API) uploadSourceMap(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusInternalServerError, "internal_error", "无法加载项目")
 		return
 	}
+	a.saveSourceMap(w, r, t, project, currentUser(r).Email)
+}
 
+// uploadSourceMapWithKey allows CI/build pipelines to upload maps with the same
+// write-only project key used for ingestion.
+func (a *API) uploadSourceMapWithKey(w http.ResponseWriter, r *http.Request) {
+	key := extractIngestKey(r)
+	if key == "" {
+		httpx.Error(w, http.StatusUnauthorized, "missing_ingest_key", "缺少项目采集密钥")
+		return
+	}
+	project, err := a.store.ProjectByKey(r.Context(), key)
+	if err != nil {
+		httpx.Error(w, http.StatusUnauthorized, "invalid_ingest_key", "采集密钥无效")
+		return
+	}
+	tenant, err := a.store.TenantByID(r.Context(), project.TenantID)
+	if err != nil {
+		httpx.Error(w, http.StatusUnauthorized, "invalid_ingest_key", "采集密钥无效")
+		return
+	}
+	if !a.limiter.allow(project.ID.Hex()+":sourcemaps", 1) {
+		w.Header().Set("Retry-After", "60")
+		httpx.Error(w, http.StatusTooManyRequests, "rate_limited", "Source Map 上传过于频繁")
+		return
+	}
+	r = r.WithContext(reqctx.WithTenant(r.Context(), tenant))
+	r = r.WithContext(reqctx.WithProject(r.Context(), project))
+	a.saveSourceMap(w, r, tenant, project, "ingest-key")
+}
+
+func (a *API) saveSourceMap(w http.ResponseWriter, r *http.Request, t model.Tenant, project model.Project, actor string) {
 	release, file, data, err := readSourceMapUpload(w, r)
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "invalid_sourcemap_upload", err.Error())
@@ -186,7 +218,7 @@ func (a *API) uploadSourceMap(w http.ResponseWriter, r *http.Request) {
 	a.sourcemaps.Invalidate(t.ID, project.ID, release)
 	a.logger.Slog.InfoContext(r.Context(), "source map uploaded",
 		"projectId", project.ID.Hex(), "release", release, "file", file,
-		"size", len(data), "sourceCount", len(meta.Sources), "actor", currentUser(r).Email)
+		"size", len(data), "sourceCount", len(meta.Sources), "actor", actor)
 	httpx.JSON(w, http.StatusCreated, map[string]any{"sourceMap": sm})
 }
 

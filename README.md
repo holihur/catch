@@ -394,14 +394,24 @@ Go 后端使用 slog 双写：
 压缩后的 `index-*.js` 堆栈可以通过上传 Source Map 还原。入口：**设置 → 项目与密钥 → Source Maps**。
 
 ```bash
-# 需要 Admin 会话 Cookie（cookies.txt 由登录获取）
-curl -b cookies.txt -X POST "$CATCH_URL/api/projects/<project-id>/sourcemaps" \
+# CI / 构建流水线：使用项目的只写 Ingest Key，无需人工登录
+curl -X POST "$CATCH_URL/api/ingest/sourcemaps" \
+  -H "X-Ingest-Key: $CATCH_KEY" \
   -H "X-Release: web@1.2.3" \
   -H "X-File: assets/index-abc.js" \
   --data-binary @dist/assets/index-abc.js.map
 ```
 
-也可在 UI 中直接上传 `.map` 文件。
+批量上传：
+
+```bash
+CATCH_URL=https://catch.example.com \
+CATCH_PROJECT_KEY=ck_xxx \
+CATCH_RELEASE=web@1.2.3 \
+./scripts/upload-sourcemaps.sh dist
+```
+
+也可在 UI 中直接上传 `.map` 文件（Admin 会话）。
 
 规则：
 
@@ -444,6 +454,7 @@ curl -b cookies.txt -X POST "$CATCH_URL/api/projects/<project-id>/sourcemaps" \
 | POST | `/api/projects/{id}/rotate-key` | 轮换密钥（Admin+） |
 | GET | `/api/projects/{id}/sourcemaps` | Source Map 列表（Admin+） |
 | POST | `/api/projects/{id}/sourcemaps` | 上传 Source Map（Admin+，原始 JSON 或 multipart） |
+| POST | `/api/ingest/sourcemaps` | 使用 Ingest Key 上传 Source Map（构建流水线） |
 | GET | `/api/projects/{id}/source` | 读取 Source Map 内嵌源码（登录用户） |
 | DELETE | `/api/projects/{id}/sourcemaps/{mapId}` | 删除 Source Map（Admin+） |
 | DELETE | `/api/projects/{id}` | 删除项目（Admin+） |
@@ -526,6 +537,7 @@ catch/
 │   ├── src/context/          # 认证、项目选择
 │   └── public/catch-sdk.js   # 可被第三方页面直接引入的独立浏览器 SDK
 ├── docs/INTEGRATION.md       # 第三方系统接入指南（SDK/HTTP/Go/Node/Python）
+├── scripts/upload-sourcemaps.sh # CI 批量上传 Source Map
 ├── Dockerfile                # Node 构建前端 + Go 编译 + 单镜像运行
 ├── docker-compose.yml
 ├── Makefile

@@ -265,6 +265,7 @@ curl -X POST "$CATCH_URL/api/ingest" \
 - 上报原始堆栈，不要删除 `file:line:column` 信息
 - JS 构建请保留 Source Map，并在发布前上传到项目的 **Settings → Source Maps**；服务端会把压缩帧还原为原始源码
 - Source Map 的 `release` 必须与事件 `release`（SDK 的 `VITE_RELEASE`）完全一致
+- CI 可以用 `POST /api/ingest/sourcemaps` + `X-Ingest-Key` 自动上传（见 `scripts/upload-sourcemaps.sh`）
 - Source Map 内含 `sourcesContent` 时，用户可以在 Catch 内直接查看源码并高亮行号；否则回退到仓库链接
 - 未上传 map 时，压缩 bundle 帧会保持纯文本；已入库的历史事件不会自动重写
 - Go/Python/Java 等后端保留完整包路径或仓库内相对路径
