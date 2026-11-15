@@ -17,6 +17,7 @@ import (
 	"github.com/catch/catch/backend/internal/model"
 	"github.com/catch/catch/backend/internal/reqctx"
 	"github.com/catch/catch/backend/internal/secure"
+	"github.com/catch/catch/backend/internal/sourcemap"
 	"github.com/catch/catch/backend/internal/store"
 	"github.com/go-chi/chi/v5"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -27,13 +28,14 @@ const Version = "1.0.0"
 
 // API wires HTTP handlers to storage, auth and logging.
 type API struct {
-	cfg       config.Config
-	store     *store.Store
-	logger    *logging.Logger
-	oidc      *auth.Service
-	box       *secure.Box
-	limiter   *rateLimiter
-	startedAt time.Time
+	cfg        config.Config
+	store      *store.Store
+	logger     *logging.Logger
+	oidc       *auth.Service
+	box        *secure.Box
+	sourcemaps *sourcemap.Service
+	limiter    *rateLimiter
+	startedAt  time.Time
 }
 
 // New creates the API.
@@ -43,13 +45,14 @@ func New(cfg config.Config, st *store.Store, logger *logging.Logger) (*API, erro
 		return nil, err
 	}
 	return &API{
-		cfg:       cfg,
-		store:     st,
-		logger:    logger,
-		oidc:      auth.NewService(st, box, cfg.PublicURL),
-		box:       box,
-		limiter:   newRateLimiter(cfg.RateLimit),
-		startedAt: time.Now().UTC(),
+		cfg:        cfg,
+		store:      st,
+		logger:     logger,
+		oidc:       auth.NewService(st, box, cfg.PublicURL),
+		box:        box,
+		sourcemaps: sourcemap.New(st),
+		limiter:    newRateLimiter(cfg.RateLimit),
+		startedAt:  time.Now().UTC(),
 	}, nil
 }
 
@@ -93,6 +96,7 @@ func (a *API) Routes() http.Handler {
 			pr.Get("/members", a.listMembers)
 			pr.Get("/tenant", a.getTenant)
 			pr.Get("/projects", a.listProjects)
+			pr.Get("/projects/{id}/source", a.getSourceFile)
 
 			pr.Group(func(wr chi.Router) {
 				wr.Use(requireRole(model.RoleMember))
@@ -108,6 +112,9 @@ func (a *API) Routes() http.Handler {
 				ar.Delete("/projects/{id}", a.deleteProject)
 				ar.Patch("/members/{id}", a.updateMember)
 				ar.Delete("/members/{id}", a.deleteMember)
+				ar.Get("/projects/{id}/sourcemaps", a.listSourceMaps)
+				ar.Post("/projects/{id}/sourcemaps", a.uploadSourceMap)
+				ar.Delete("/projects/{id}/sourcemaps/{mapId}", a.deleteSourceMap)
 				ar.Patch("/tenant", a.updateTenant)
 				ar.Put("/tenant/oidc", a.updateOIDC)
 			})

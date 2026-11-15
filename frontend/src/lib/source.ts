@@ -1,5 +1,14 @@
 import type { Project } from "./types"
 
+export interface SourceFrame {
+  project: Project
+  release?: string
+  path: string
+  line: number
+  column?: number
+  href?: string | null
+}
+
 export interface SourceLocation {
   file: string
   line: number
@@ -183,6 +192,30 @@ export function buildSourceUrl(
     default:
       return `${repo}/blob/${branch}/${encodedPath}#L${lineNo}`
   }
+}
+
+export function firstSourceFrame(
+  project: Project | null | undefined,
+  release: string | undefined,
+  texts: Array<string | undefined | null>,
+): SourceFrame | null {
+  if (!project) return null
+  for (const text of texts) {
+    if (!text) continue
+    for (const line of text.split("\n")) {
+      const loc = parseSourceLocation(line)
+      if (!loc) continue
+      return {
+        project,
+        release,
+        path: loc.file,
+        line: loc.line,
+        column: loc.column,
+        href: buildSourceUrl(project, loc.file, loc.line, loc.column),
+      }
+    }
+  }
+  return null
 }
 
 export function buildSourceUrlForText(

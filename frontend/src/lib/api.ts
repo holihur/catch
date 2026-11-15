@@ -12,6 +12,8 @@ import type {
   Project,
   ProjectListResponse,
   PublicTenant,
+  SourceFileResponse,
+  SourceMapMeta,
   Tenant,
   TenantResponse,
   User,
@@ -186,6 +188,46 @@ export const api = {
     request<Overview>(`/api/overview${qs(params)}`),
   insights: (params: { projectId?: string; range?: string }) =>
     request<Insights>(`/api/insights${qs(params)}`),
+
+  // source maps
+  sourceFile: (projectId: string, release: string, path: string, line?: number) =>
+    request<SourceFileResponse>(
+      `/api/projects/${projectId}/source${qs({ release, path, line })}`,
+    ),
+  sourceMaps: (projectId: string, release?: string) =>
+    request<{ sourceMaps: SourceMapMeta[] }>(
+      `/api/projects/${projectId}/sourcemaps${qs({ release })}`,
+    ),
+  uploadSourceMap: async (
+    projectId: string,
+    input: { release: string; file: string; map: File },
+  ): Promise<SourceMapMeta> => {
+    const form = new FormData()
+    form.append("release", input.release)
+    if (input.file) form.append("file", input.file)
+    form.append("map", input.map, input.map.name)
+    const res = await fetch(`${API_BASE}/api/projects/${projectId}/sourcemaps`, {
+      method: "POST",
+      credentials: "include",
+      body: form,
+    })
+    const text = await res.text()
+    const payload = text ? JSON.parse(text) : null
+    if (!res.ok) {
+      const err = new ApiError(
+        res.status,
+        payload?.error?.code ?? "upload_failed",
+        payload?.error?.message ?? `上传失败 (${res.status})`,
+        res.headers.get("X-Request-Id") ?? undefined,
+      )
+      if (res.status === 401) window.dispatchEvent(new CustomEvent("catch:unauthorized"))
+      if (res.status >= 500) captureError(err, { kind: "api", path: `/api/projects/${projectId}/sourcemaps`, method: "POST" })
+      throw err
+    }
+    return payload.sourceMap as SourceMapMeta
+  },
+  deleteSourceMap: (projectId: string, mapId: string) =>
+    request<void>(`/api/projects/${projectId}/sourcemaps/${mapId}`, { method: "DELETE" }),
 
   // members & tenant
   members: () => request<MembersResponse>("/api/members"),

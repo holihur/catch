@@ -6,6 +6,7 @@ import { Toaster } from "sonner"
 import { App } from "./App"
 import { AuthProvider } from "./context/AuthContext"
 import { ProjectProvider } from "./context/ProjectContext"
+import { SourceViewerProvider } from "./context/SourceViewerContext"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { initTelemetry } from "./lib/telemetry"
 import "./index.css"
@@ -18,8 +19,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <AuthProvider>
           <ProjectProvider>
-            <App />
-            <Toaster position="bottom-right" richColors closeButton />
+            <SourceViewerProvider>
+              <App />
+              <Toaster position="bottom-right" richColors closeButton />
+            </SourceViewerProvider>
           </ProjectProvider>
         </AuthProvider>
       </BrowserRouter>

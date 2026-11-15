@@ -21,7 +21,8 @@ import type { EventItem, IssueDetail, Project, User } from "@/lib/types"
 import { cn, formatFullDate, formatNumber, relativeTime } from "@/lib/utils"
 import { useAuth } from "@/context/AuthContext"
 import { useProjects } from "@/context/ProjectContext"
-import { buildSourceUrl, firstSourceUrl, parseSourceLocation, repoLabel } from "@/lib/source"
+import { firstSourceFrame, repoLabel } from "@/lib/source"
+import { useSourceViewer } from "@/context/SourceViewerContext"
 import { PageHeader } from "@/components/common/PageHeader"
 import { LevelBadge, SourceBadge, StatusBadge } from "@/components/common/Badges"
 import { CopyButton } from "@/components/common/CopyButton"
@@ -55,6 +56,7 @@ export function IssueDetailPage() {
   const navigate = useNavigate()
   const { me } = useAuth()
   const { projects, selectedId } = useProjects()
+  const { openSource } = useSourceViewer()
   const [data, setData] = React.useState<IssueDetail | null>(null)
   const [members, setMembers] = React.useState<User[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -93,7 +95,10 @@ export function IssueDetailPage() {
     projects.find((p) => p.id === issue?.projectId) ??
     projects.find((p) => p.id === selectedId) ??
     null
-  const firstSource = firstSourceUrl(project, [selectedEvent?.stack, issue?.culprit])
+  const firstFrame = firstSourceFrame(project, selectedEvent?.release, [
+    selectedEvent?.stack,
+    issue?.culprit,
+  ])
 
   const changeStatus = async (status: string) => {
     if (!issue) return
@@ -220,11 +225,9 @@ export function IssueDetailPage() {
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {firstSource ? (
-              <Button asChild variant="outline" size="sm">
-                <a href={firstSource} target="_blank" rel="noreferrer noopener">
-                  <Code2 className="size-4" /> 源码
-                </a>
+            {firstFrame ? (
+              <Button variant="outline" size="sm" onClick={() => openSource(firstFrame)}>
+                <Code2 className="size-4" /> 源码
               </Button>
             ) : null}
             <UserRound className="text-muted-foreground size-4" />
@@ -287,7 +290,12 @@ export function IssueDetailPage() {
                   <TabsTrigger value="events">事件 ({data.events.length})</TabsTrigger>
                 </TabsList>
                 <TabsContent value="stack" className="pt-3">
-                  <StackTrace stack={selectedEvent?.stack} project={project} />
+                  <StackTrace
+                    stack={selectedEvent?.stack}
+                    project={project}
+                    release={selectedEvent?.release}
+                    sourceMap={selectedEvent?.sourceMap}
+                  />
                 </TabsContent>
                 <TabsContent value="breadcrumbs" className="pt-3">
                   {selectedEvent?.breadcrumbs?.length ? (
@@ -512,11 +520,8 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 }
 
 function EventSummary({ event, project }: { event: EventItem; project: Project | null }) {
-  const culpritLocation = event.culprit ? parseSourceLocation(event.culprit) : null
-  const culpritSource =
-    culpritLocation && project
-      ? buildSourceUrl(project, culpritLocation.file, culpritLocation.line, culpritLocation.column)
-      : null
+  const { openSource } = useSourceViewer()
+  const frame = firstSourceFrame(project, event.release, [event.stack, event.culprit])
   return (
     <div className="bg-muted/30 space-y-2 rounded-xl p-3.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -542,15 +547,14 @@ function EventSummary({ event, project }: { event: EventItem; project: Project |
         {event.user?.id ? <span>用户：{event.user.email || event.user.id}</span> : null}
         {event.service ? <span>服务：{event.service}</span> : null}
         {event.release ? <span>版本：{event.release}</span> : null}
-        {culpritSource ? (
-          <a
-            href={culpritSource}
-            target="_blank"
-            rel="noreferrer noopener"
+        {frame ? (
+          <button
+            type="button"
+            onClick={() => openSource(frame)}
             className="text-primary inline-flex items-center gap-1 hover:underline"
           >
-            打开源码 <ExternalLink className="size-3" />
-          </a>
+            查看源码 <ExternalLink className="size-3" />
+          </button>
         ) : null}
       </div>
     </div>

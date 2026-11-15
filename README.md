@@ -17,7 +17,8 @@ Catch 是一个多租户日志与错误可观测平台：前端 SDK 和后端服
 | 问题 | 指纹归并、状态流转（待处理/已解决/已忽略）、回归检测、负责人、评论、堆栈/面包屑/上下文 |
 | 日志 | 前端 + 后端统一检索，来源/级别/时间/关键词过滤，10 秒实时刷新，详情弹窗 |
 | 持续改进 | 健康分、MTTR、回归数、长期未复现问题、错误环比、激增检测、规则化改进建议 |
-| 源码跳转 | 配置项目仓库后，从堆栈帧/错误位置直接打开 GitHub/GitLab/Bitbucket/Gitea 对应源码行 |
+| 源码跳转 | 在 Catch 内直接查看堆栈对应源码并高亮行号；Source Map 缺失时可跳转 GitHub/GitLab/Bitbucket/Gitea |
+| Source Map | 上传构建产物 Source Map，服务端在采集时把压缩堆栈还原为原始 TS/TSX/源文件行列 |
 | 设置 | 项目与采集密钥、密钥轮换、成员角色、租户信息、OIDC 配置、SDK 接入示例与一键测试 |
 | 可观测性 | 后端请求日志/panic 自动落库；前端 SDK 捕获 `window.onerror`、`unhandledrejection`、React 错误边界和 API 5xx |
 
@@ -375,9 +376,9 @@ Go 后端使用 slog 双写：
 
 配置后：
 
-- 问题详情的堆栈帧中，源码文件路径变为可点击链接
-- 问题详情顶部出现“源码”按钮，事件摘要和弹窗中出现“打开源码”
-- 日志详情弹窗可直接打开对应源码
+- 点击堆栈帧中的源码路径，会在 Catch 内打开 **源码查看器**（行号、目标行高亮、复制代码）
+- 问题详情顶部“源码”按钮、事件摘要、日志详情弹窗都直接打开查看器
+- 如果 Source Map 没有内嵌 `sourcesContent`，查看器提供“在仓库打开”作为兜底
 - 举例：`http://localhost:5173/src/pages/Orders.tsx:88:24` + 根目录 `frontend` →
   `https://github.com/holihur/catch/blob/master/frontend/src/pages/Orders.tsx#L88`
 
@@ -388,7 +389,34 @@ Go 后端使用 slog 双写：
 - 自动跳过 `node_modules`、`/assets/index-*.js`、`index-*.js`、`chunk-*.js` 等无法映射的构建产物
 - 仅当项目配置了仓库地址或自定义模板时才生成链接
 
-> 当前版本不解析 Source Map。压缩后的 `index-*.js` 堆栈会保持纯文本；如需映射到原始 TS/TSX 行列，需要后续接入 Source Map 处理。
+### Source Map 还原
+
+压缩后的 `index-*.js` 堆栈可以通过上传 Source Map 还原。入口：**设置 → 项目与密钥 → Source Maps**。
+
+```bash
+# 需要 Admin 会话 Cookie（cookies.txt 由登录获取）
+curl -b cookies.txt -X POST "$CATCH_URL/api/projects/<project-id>/sourcemaps" \
+  -H "X-Release: web@1.2.3" \
+  -H "X-File: assets/index-abc.js" \
+  --data-binary @dist/assets/index-abc.js.map
+```
+
+也可在 UI 中直接上传 `.map` 文件。
+
+规则：
+
+- `release` 必须与前端 SDK 的 `VITE_RELEASE` / 事件 `release` 完全一致
+- `file` 是构建后的 bundle 路径，例如 `assets/index-abc.js`；只填文件名也可以按 basename 匹配
+- 服务端在 ingest 时解析 `file:line:column`，把堆栈替换为原始源码路径，并重新计算问题指纹
+- 还原成功的事件会显示 **Source Map 已还原** 徽标
+- 如果 Source Map 包含 `sourcesContent`，点击源码行可直接在 Catch 内查看代码，无需跳转仓库
+- 内嵌源码与仓库映射互相独立：有 Source Map 时优先内嵌查看，缺失内容时回退到仓库链接
+- 上传限制：原始文件 ≤20MB，gzip 后 ≤12MB；单个 release 可上传多个 bundle map
+- 历史事件不会自动重写；请在发布前上传，或重新上报事件
+- 支持 Source Map v3、`sources`/`mappings` 以及 indexed `sections`
+
+> Source Map 用于还原堆栈并提供内嵌源码；仓库映射用于“在仓库打开”的兜底链接。两者可单独配置。
+
 
 
 
@@ -412,8 +440,12 @@ Go 后端使用 slog 双写：
 | GET | `/api/events/{id}` | 事件详情 |
 | GET | `/api/projects` | 项目列表（非 Admin 密钥脱敏） |
 | POST | `/api/projects` | 创建项目（Admin+） |
-| PATCH | `/api/projects/{id}` | 更新项目（Admin+） |
+| PATCH | `/api/projects/{id}` | 更新项目/源码映射（Admin+） |
 | POST | `/api/projects/{id}/rotate-key` | 轮换密钥（Admin+） |
+| GET | `/api/projects/{id}/sourcemaps` | Source Map 列表（Admin+） |
+| POST | `/api/projects/{id}/sourcemaps` | 上传 Source Map（Admin+，原始 JSON 或 multipart） |
+| GET | `/api/projects/{id}/source` | 读取 Source Map 内嵌源码（登录用户） |
+| DELETE | `/api/projects/{id}/sourcemaps/{mapId}` | 删除 Source Map（Admin+） |
 | DELETE | `/api/projects/{id}` | 删除项目（Admin+） |
 | GET | `/api/members` | 成员列表 |
 | PATCH | `/api/members/{id}` | 修改角色（Admin+） |
@@ -484,12 +516,13 @@ catch/
 │       ├── reqctx/           # 请求上下文身份/trace
 │       ├── secure/           # AES-GCM、随机 token、SHA-256
 │       ├── seed/             # 演示租户/项目/7 天数据
+│       ├── sourcemap/        # Source Map 解析、帧还原与缓存
 │       └── store/            # MongoDB 仓储、索引、聚合统计
 ├── frontend/
 │   ├── src/components/ui/    # shadcn/ui 组件
 │   ├── src/components/       # 布局、图表、通用组件
 │   ├── src/pages/            # 登录/概览/问题/日志/改进/设置
-│   ├── src/lib/              # api、telemetry、types、utils
+│   ├── src/lib/              # api、telemetry、source 映射、types、utils
 │   ├── src/context/          # 认证、项目选择
 │   └── public/catch-sdk.js   # 可被第三方页面直接引入的独立浏览器 SDK
 ├── docs/INTEGRATION.md       # 第三方系统接入指南（SDK/HTTP/Go/Node/Python）
@@ -505,6 +538,5 @@ catch/
 
 - OIDC `roles` claim 目前未映射为 Catch 角色；可增加“租户级 claim → 角色”映射策略。
 - 尚未实现告警通道（Webhook/邮件/钉钉）与错误预算。
-- 尚未接入 Source Map 还原压缩后的前端堆栈。
 - 问题合并、相似问题推荐、自动静音规则可作为下一步。
 - 日志检索目前使用正则 + 分页；数据量增大后建议引入全文索引或专用日志存储。

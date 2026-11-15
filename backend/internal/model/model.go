@@ -131,6 +131,7 @@ type Event struct {
 	Culprit     string             `bson:"culprit,omitempty" json:"culprit,omitempty"`
 	URL         string             `bson:"url,omitempty" json:"url,omitempty"`
 	Stack       string             `bson:"stack,omitempty" json:"stack,omitempty"`
+	SourceMap   bool               `bson:"sourceMap,omitempty" json:"sourceMap,omitempty"`
 	Tags        map[string]string  `bson:"tags,omitempty" json:"tags,omitempty"`
 	Context     map[string]any     `bson:"context,omitempty" json:"context,omitempty"`
 	User        *EventUser         `bson:"user,omitempty" json:"user,omitempty"`
@@ -192,6 +193,21 @@ type Comment struct {
 	AuthorName string             `bson:"authorName" json:"authorName"`
 	Body       string             `bson:"body" json:"body"`
 	CreatedAt  time.Time          `bson:"createdAt" json:"createdAt"`
+}
+
+// SourceMap stores a gzipped source map for a generated bundle. Content is
+// never serialized to API responses.
+type SourceMap struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	TenantID    primitive.ObjectID `bson:"tenantId" json:"tenantId"`
+	ProjectID   primitive.ObjectID `bson:"projectId" json:"projectId"`
+	Release     string             `bson:"release" json:"release"`
+	File        string             `bson:"file" json:"file"`
+	Size        int64              `bson:"size" json:"size"`
+	SourceCount int                `bson:"sourceCount" json:"sourceCount"`
+	Content     []byte             `bson:"content" json:"-"`
+	CreatedAt   time.Time          `bson:"createdAt" json:"createdAt"`
+	UpdatedAt   time.Time          `bson:"updatedAt" json:"updatedAt"`
 }
 
 // RoleRank returns a numeric rank for role comparisons.

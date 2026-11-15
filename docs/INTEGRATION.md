@@ -263,7 +263,10 @@ curl -X POST "$CATCH_URL/api/ingest" \
 在 Catch 中为项目配置源码仓库后，堆栈和 `culprit` 中的文件路径会生成源码链接。为了获得最佳效果：
 
 - 上报原始堆栈，不要删除 `file:line:column` 信息
-- JS 构建尽量保留 Source Map；当前版本会跳过无法映射的压缩 bundle
+- JS 构建请保留 Source Map，并在发布前上传到项目的 **Settings → Source Maps**；服务端会把压缩帧还原为原始源码
+- Source Map 的 `release` 必须与事件 `release`（SDK 的 `VITE_RELEASE`）完全一致
+- Source Map 内含 `sourcesContent` 时，用户可以在 Catch 内直接查看源码并高亮行号；否则回退到仓库链接
+- 未上传 map 时，压缩 bundle 帧会保持纯文本；已入库的历史事件不会自动重写
 - Go/Python/Java 等后端保留完整包路径或仓库内相对路径
 - 在项目设置中填写正确的“源码根目录”（如 `frontend`、`backend`）
 

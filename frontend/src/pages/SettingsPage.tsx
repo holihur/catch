@@ -5,9 +5,11 @@ import {
   Code2,
   Copy,
   ExternalLink,
+  FileCode2,
   GitBranch,
   KeyRound,
   Loader2,
+  Upload,
   Plus,
   RefreshCw,
   Send,
@@ -19,11 +21,11 @@ import {
 import { toast } from "sonner"
 
 import { api } from "@/lib/api"
-import type { Project, TenantResponse, User } from "@/lib/types"
+import type { Project, SourceMapMeta, TenantResponse, User } from "@/lib/types"
 import { useAuth } from "@/context/AuthContext"
 import { useProjects } from "@/context/ProjectContext"
 import { sendTestEvent, telemetryEnabled, telemetryInfo } from "@/lib/telemetry"
-import { copyText, formatFullDate, relativeTime } from "@/lib/utils"
+import { copyText, formatBytes, formatFullDate, relativeTime } from "@/lib/utils"
 import { buildSourceUrl, detectProvider, repoLabel } from "@/lib/source"
 import { PageHeader } from "@/components/common/PageHeader"
 import { ConfirmDialog } from "@/components/common/ConfirmDialog"
@@ -71,6 +73,7 @@ export function SettingsPage() {
   const [error, setError] = React.useState<unknown>(null)
   const [createOpen, setCreateOpen] = React.useState(false)
   const [sourceProject, setSourceProject] = React.useState<Project | null>(null)
+  const [sourceMapProject, setSourceMapProject] = React.useState<Project | null>(null)
   const [confirm, setConfirm] = React.useState<{ type: "delete" | "rotate"; project: Project } | null>(null)
   const [confirmBusy, setConfirmBusy] = React.useState(false)
 
@@ -213,6 +216,9 @@ export function SettingsPage() {
                         <div className="flex flex-wrap justify-end gap-1">
                           <Button variant="ghost" size="sm" onClick={() => setSourceProject(p)}>
                             <Code2 className="size-3.5" /> 源码
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setSourceMapProject(p)}>
+                            <FileCode2 className="size-3.5" /> Source Maps
                           </Button>
                           <Button
                             variant="ghost"
@@ -389,6 +395,13 @@ export function SettingsPage() {
         }}
       />
 
+      {sourceMapProject ? (
+        <ProjectSourceMapsDialog
+          project={sourceMapProject}
+          onClose={() => setSourceMapProject(null)}
+        />
+      ) : null}
+
       {sourceProject ? (
         <ProjectSourceDialog
           project={sourceProject}
@@ -463,6 +476,202 @@ export function SettingsPage() {
       toast.error(err instanceof Error ? err.message : "移除成员失败")
     }
   }
+}
+
+function ProjectSourceMapsDialog({
+  project,
+  onClose,
+}: {
+  project: Project
+  onClose: () => void
+}) {
+  const [maps, setMaps] = React.useState<SourceMapMeta[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [release, setRelease] = React.useState("")
+  const [bundle, setBundle] = React.useState("")
+  const [file, setFile] = React.useState<File | null>(null)
+  const [busy, setBusy] = React.useState(false)
+  const [deleting, setDeleting] = React.useState<string | null>(null)
+  const fileRef = React.useRef<HTMLInputElement>(null)
+
+  const load = React.useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await api.sourceMaps(project.id)
+      setMaps(res.sourceMaps)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "加载 Source Map 失败")
+    } finally {
+      setLoading(false)
+    }
+  }, [project.id])
+
+  React.useEffect(() => {
+    void load()
+  }, [load])
+
+  const upload = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!file) {
+      toast.error("请选择 .map 文件")
+      return
+    }
+    if (!release.trim()) {
+      toast.error("请填写 release，例如 web@1.2.3")
+      return
+    }
+    setBusy(true)
+    try {
+      const bundleName = bundle.trim() || file.name.replace(/\.map$/i, "")
+      await api.uploadSourceMap(project.id, {
+        release: release.trim(),
+        file: bundleName,
+        map: file,
+      })
+      toast.success("Source Map 已上传，将用于后续事件")
+      setFile(null)
+      if (fileRef.current) fileRef.current.value = ""
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "上传失败")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async (map: SourceMapMeta) => {
+    if (!window.confirm(`删除 ${map.file} (${map.release}) 的 Source Map？`)) return
+    setDeleting(map.id)
+    try {
+      await api.deleteSourceMap(project.id, map.id)
+      toast.success("Source Map 已删除")
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "删除失败")
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileCode2 className="size-4" /> Source Maps
+          </DialogTitle>
+          <DialogDescription>
+            为 <strong>{project.name}</strong> 上传构建产物的 Source Map。上传后，新的堆栈事件会自动还原到原始源码位置。
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={upload} className="space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="sm-release">Release</Label>
+              <Input
+                id="sm-release"
+                placeholder="web@1.2.3"
+                value={release}
+                onChange={(e) => setRelease(e.target.value)}
+              />
+              <p className="text-muted-foreground text-[10px]">
+                必须与 SDK 的 VITE_RELEASE / release 字段完全一致
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sm-bundle">Bundle 文件（可选）</Label>
+              <Input
+                id="sm-bundle"
+                placeholder="assets/index-abc.js"
+                value={bundle}
+                onChange={(e) => setBundle(e.target.value)}
+              />
+              <p className="text-muted-foreground text-[10px]">
+                留空时自动使用上传文件名（去掉 .map）
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="sm-file">Source Map 文件</Label>
+            <Input
+              ref={fileRef}
+              id="sm-file"
+              type="file"
+              accept=".map,application/json"
+              className="h-auto py-1.5 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-2 file:py-1 file:text-xs file:font-medium file:text-primary"
+              onChange={(e) => {
+                const next = e.target.files?.[0] ?? null
+                setFile(next)
+                if (next && !bundle.trim()) {
+                  setBundle(next.name.replace(/\.map$/i, ""))
+                }
+              }}
+            />
+            <div className="text-muted-foreground flex items-center justify-between text-[10px]">
+              <span>支持 .map（≤20MB），上传后 gzip 存储</span>
+              {file ? <span>{formatBytes(file.size)}</span> : null}
+            </div>
+          </div>
+          <Button type="submit" size="sm" disabled={busy} className="w-full sm:w-auto">
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            上传 Source Map
+          </Button>
+        </form>
+
+        <div className="bg-muted/30 text-muted-foreground rounded-xl p-3 text-[11px] leading-relaxed">
+          请在发布前上传，或确保事件到达前已完成上传。已入库的历史事件不会自动重写；如需重新处理，请重新上报事件。
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">已上传（{maps.length}）</p>
+            <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={loading ? "size-3.5 animate-spin" : "size-3.5"} /> 刷新
+            </Button>
+          </div>
+          {loading ? (
+            <p className="text-muted-foreground py-4 text-center text-xs">加载中…</p>
+          ) : maps.length === 0 ? (
+            <p className="text-muted-foreground bg-muted/20 rounded-xl px-4 py-6 text-center text-xs">
+              还没有 Source Map
+            </p>
+          ) : (
+            maps.map((map) => (
+              <div key={map.id} className="bg-muted/30 flex items-start gap-3 rounded-xl p-3">
+                <FileCode2 className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="truncate font-mono text-xs">{map.file}</span>
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {map.release}
+                    </Badge>
+                  </div>
+                  <p className="text-muted-foreground mt-1 text-[10px]">
+                    {formatBytes(map.size)} · {map.sourceCount} sources · {relativeTime(map.updatedAt)}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground hover:text-destructive shrink-0"
+                  title="删除 Source Map"
+                  disabled={deleting === map.id}
+                  onClick={() => void remove(map)}
+                >
+                  {deleting === map.id ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-3.5" />
+                  )}
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function ProjectSourceDialog({

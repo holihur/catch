@@ -13,16 +13,17 @@ import (
 
 // Store is the MongoDB persistence layer.
 type Store struct {
-	Client   *mongo.Client
-	DB       *mongo.Database
-	Tenants  *mongo.Collection
-	Users    *mongo.Collection
-	Sessions *mongo.Collection
-	OIDC     *mongo.Collection
-	Projects *mongo.Collection
-	Events   *mongo.Collection
-	Issues   *mongo.Collection
-	Comments *mongo.Collection
+	Client     *mongo.Client
+	DB         *mongo.Database
+	Tenants    *mongo.Collection
+	Users      *mongo.Collection
+	Sessions   *mongo.Collection
+	OIDC       *mongo.Collection
+	Projects   *mongo.Collection
+	Events     *mongo.Collection
+	Issues     *mongo.Collection
+	Comments   *mongo.Collection
+	SourceMaps *mongo.Collection
 }
 
 // Connect opens a MongoDB connection and ensures indexes exist.
@@ -43,16 +44,17 @@ func Connect(ctx context.Context, uri, dbName string, retention time.Duration) (
 	}
 	db := client.Database(dbName)
 	s := &Store{
-		Client:   client,
-		DB:       db,
-		Tenants:  db.Collection("tenants"),
-		Users:    db.Collection("users"),
-		Sessions: db.Collection("sessions"),
-		OIDC:     db.Collection("oidc_states"),
-		Projects: db.Collection("projects"),
-		Events:   db.Collection("events"),
-		Issues:   db.Collection("issues"),
-		Comments: db.Collection("comments"),
+		Client:     client,
+		DB:         db,
+		Tenants:    db.Collection("tenants"),
+		Users:      db.Collection("users"),
+		Sessions:   db.Collection("sessions"),
+		OIDC:       db.Collection("oidc_states"),
+		Projects:   db.Collection("projects"),
+		Events:     db.Collection("events"),
+		Issues:     db.Collection("issues"),
+		Comments:   db.Collection("comments"),
+		SourceMaps: db.Collection("source_maps"),
 	}
 	if err := s.ensureIndexes(ctx, retention); err != nil {
 		return nil, err
@@ -93,6 +95,8 @@ func (s *Store) ensureIndexes(ctx context.Context, retention time.Duration) erro
 		{"issues", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "status", Value: 1}, {Key: "lastSeen", Value: -1}}, idx("issues_status_lastseen")},
 		{"issues", bson.D{{Key: "tenantId", Value: 1}, {Key: "lastSeen", Value: -1}}, idx("issues_tenant_lastseen")},
 		{"comments", bson.D{{Key: "issueId", Value: 1}, {Key: "createdAt", Value: 1}}, idx("comments_issue_time")},
+		{"source_maps", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "release", Value: 1}, {Key: "file", Value: 1}}, idx("uniq_sourcemap").SetUnique(true)},
+		{"source_maps", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "release", Value: 1}, {Key: "updatedAt", Value: -1}}, idx("sourcemaps_release")},
 	}
 	for _, sp := range specs {
 		coll := s.DB.Collection(sp.coll)

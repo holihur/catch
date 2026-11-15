@@ -5,7 +5,8 @@ import { Code2, ExternalLink, RefreshCw, Search, ScrollText } from "lucide-react
 import { api } from "@/lib/api"
 import type { EventItem, EventsResponse, Project } from "@/lib/types"
 import { useProjects } from "@/context/ProjectContext"
-import { firstSourceUrl } from "@/lib/source"
+import { firstSourceFrame } from "@/lib/source"
+import { useSourceViewer } from "@/context/SourceViewerContext"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { cn, formatFullDate, formatNumber, levelClass, relativeTime } from "@/lib/utils"
@@ -293,8 +294,9 @@ function EventDetailDialog({
   projects: Project[]
   onClose: () => void
 }) {
+  const { openSource } = useSourceViewer()
   const project = event?.projectId ? projects.find((p) => p.id === event.projectId) ?? null : null
-  const sourceUrl = firstSourceUrl(project, [event?.culprit, event?.stack])
+  const sourceFrame = firstSourceFrame(project, event?.release, [event?.stack, event?.culprit])
   return (
     <Dialog open={Boolean(event)} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl">
@@ -309,11 +311,14 @@ function EventDetailDialog({
               <DialogDescription className="break-all">
                 {formatFullDate(event.timestamp)} · {event.service || "unknown"} · {event.environment || "unknown"}
               </DialogDescription>
-              {sourceUrl ? (
-                <Button asChild variant="outline" size="sm" className="mt-1 w-fit">
-                  <a href={sourceUrl} target="_blank" rel="noreferrer noopener">
-                    <Code2 className="size-3.5" /> 打开源码 <ExternalLink className="size-3" />
-                  </a>
+              {sourceFrame ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-1 w-fit"
+                  onClick={() => openSource(sourceFrame)}
+                >
+                  <Code2 className="size-3.5" /> 查看源码 <ExternalLink className="size-3" />
                 </Button>
               ) : null}
             </DialogHeader>
@@ -362,7 +367,7 @@ function EventDetailDialog({
               {event.stack ? (
                 <div>
                   <p className="text-muted-foreground mb-1.5 text-xs font-medium">堆栈</p>
-                  <StackTrace stack={event.stack} project={project} />
+                  <StackTrace stack={event.stack} project={project} release={event.release} sourceMap={event.sourceMap} />
                 </div>
               ) : null}
 

@@ -87,11 +87,33 @@ export interface EventItem {
   culprit?: string
   url?: string
   stack?: string
+  sourceMap?: boolean
   tags?: Record<string, string>
   context?: Record<string, unknown>
   user?: EventUser
   request?: EventRequest
   breadcrumbs?: Breadcrumb[]
+}
+
+export interface SourceFileResponse {
+  path: string
+  content: string
+  line: number
+  language: string
+  release: string
+  truncated: boolean
+}
+
+export interface SourceMapMeta {
+  id: string
+  tenantId: string
+  projectId: string
+  release: string
+  file: string
+  size: number
+  sourceCount: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Issue {

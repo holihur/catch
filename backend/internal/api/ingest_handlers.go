@@ -167,6 +167,22 @@ func (a *API) ingest(w http.ResponseWriter, r *http.Request) {
 				err.Error(), map[string]any{"index": i})
 			return
 		}
+		if e.Stack != "" {
+			resolved, changed, smErr := a.sourcemaps.ResolveStack(r.Context(), tenant.ID, project.ID, e.Release, e.Stack)
+			if smErr != nil {
+				a.logger.Slog.WarnContext(r.Context(), "source map resolve failed",
+					"projectId", project.ID.Hex(), "release", e.Release, "error", smErr)
+			} else if changed {
+				e.Stack = resolved
+				e.SourceMap = true
+				if c := ingest.Culprit(resolved); c != "" {
+					e.Culprit = ingest.Truncate(c, 300)
+				}
+				if e.Kind == model.KindError {
+					e.Fingerprint = ingest.Fingerprint(e.Source, e.ErrorType, e.Message, e.Culprit)
+				}
+			}
+		}
 		if e.Kind == model.KindError {
 			issue, isNew, isReopened, err := a.store.UpsertIssue(r.Context(), model.Issue{
 				TenantID: tenant.ID, ProjectID: project.ID,
