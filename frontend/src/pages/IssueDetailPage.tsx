@@ -24,7 +24,7 @@ import { useProjects } from "@/context/ProjectContext"
 import { firstSourceFrame, repoLabel } from "@/lib/source"
 import { useSourceViewer } from "@/context/SourceViewerContext"
 import { PageHeader } from "@/components/common/PageHeader"
-import { LevelBadge, SourceBadge, StatusBadge } from "@/components/common/Badges"
+import { LevelBadge, LevelMark, SourceBadge, StatusBadge } from "@/components/common/Badges"
 import { CopyButton } from "@/components/common/CopyButton"
 import { ErrorState } from "@/components/common/ErrorState"
 import { StackTrace } from "@/components/common/StackTrace"
@@ -358,7 +358,7 @@ export function IssueDetailPage() {
                           setTab("stack")
                         }}
                       >
-                        <LevelBadge level={e.level} />
+                        <LevelMark level={e.level} />
                         <span className="min-w-0 flex-1 truncate text-xs">{e.message}</span>
                         <span className="text-muted-foreground shrink-0 text-[11px]">
                           {relativeTime(e.timestamp)}

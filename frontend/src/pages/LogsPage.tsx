@@ -9,13 +9,13 @@ import { firstSourceFrame } from "@/lib/source"
 import { useSourceViewer } from "@/context/SourceViewerContext"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
-import { cn, formatFullDate, formatNumber, levelClass, relativeTime } from "@/lib/utils"
+import { formatFullDate, formatNumber, relativeTime } from "@/lib/utils"
 import { PageHeader } from "@/components/common/PageHeader"
 import { EmptyState } from "@/components/common/EmptyState"
 import { ErrorState } from "@/components/common/ErrorState"
 import { Pagination } from "@/components/common/Pagination"
 import { TimeRangeSelect } from "@/components/common/TimeRangeSelect"
-import { LevelBadge, SourceBadge } from "@/components/common/Badges"
+import { LevelBadge, LevelMark, SourceBadge } from "@/components/common/Badges"
 import { StackTrace } from "@/components/common/StackTrace"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -183,12 +183,7 @@ export function LogsPage() {
                     className="bg-card w-full rounded-2xl p-3.5 text-left shadow-sm transition-shadow active:shadow-md"
                   >
                     <div className="flex items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className={cn("font-mono text-[10px] uppercase", levelClass(e.level))}
-                      >
-                        {e.level}
-                      </Badge>
+                      <LevelMark level={e.level} />
                       <SourceBadge source={e.source} />
                       <span className="text-muted-foreground ml-auto text-[10px]">
                         {relativeTime(e.timestamp)}
@@ -233,9 +228,7 @@ export function LogsPage() {
                           {relativeTime(e.timestamp)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={cn("font-mono text-[10px] uppercase", levelClass(e.level))}>
-                            {e.level}
-                          </Badge>
+                          <LevelMark level={e.level} />
                         </TableCell>
                         <TableCell>
                           <SourceBadge source={e.source} />

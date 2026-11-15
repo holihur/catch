@@ -8,7 +8,7 @@ import { useProjects } from "@/context/ProjectContext"
 import { useDebounce } from "@/hooks/useDebounce"
 import { formatNumber, relativeTime } from "@/lib/utils"
 import { PageHeader } from "@/components/common/PageHeader"
-import { LevelBadge, SourceBadge, StatusBadge } from "@/components/common/Badges"
+import { LevelMark, SourceBadge, StatusBadge } from "@/components/common/Badges"
 import { EmptyState } from "@/components/common/EmptyState"
 import { ErrorState } from "@/components/common/ErrorState"
 import { Pagination } from "@/components/common/Pagination"
@@ -205,7 +205,7 @@ function IssueRow({ issue, onOpen }: { issue: Issue; onOpen: () => void }) {
       className="group hover:bg-muted/40 flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3.5 transition-colors sm:items-center"
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        <LevelBadge level={issue.level} className="mt-0.5 shrink-0" />
+        <LevelMark level={issue.level} className="mt-0.5 shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Link

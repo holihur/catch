@@ -19,7 +19,7 @@ import { StatCard } from "@/components/common/StatCard"
 import { TimeRangeSelect } from "@/components/common/TimeRangeSelect"
 import { ErrorState } from "@/components/common/ErrorState"
 import { EmptyState } from "@/components/common/EmptyState"
-import { LevelBadge, SourceBadge } from "@/components/common/Badges"
+import { LevelMark, SourceBadge } from "@/components/common/Badges"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -182,7 +182,7 @@ export function OverviewPage() {
                         to={href}
                         className="hover:bg-muted/60 group flex items-start gap-3 rounded-lg px-2 py-2.5 transition-colors"
                       >
-                        <LevelBadge level={e.level} className="mt-0.5" />
+                        <LevelMark level={e.level} className="mt-0.5" />
                         <div className="min-w-0 flex-1">
                           <p className="group-hover:text-primary truncate text-sm font-medium transition-colors">
                             {e.message.split("\n")[0]}
