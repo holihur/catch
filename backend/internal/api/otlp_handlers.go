@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -19,7 +20,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const maxOTLPBytes = 20 << 20
+const (
+	maxOTLPBytes  = 20 << 20
+	maxOTLPEvents = 5000
+)
+
+var errOTLPTooLarge = errors.New("OTLP payload too large")
 
 // otlpLogs receives OTLP/HTTP logs (protobuf or JSON).
 func (a *API) otlpLogs(w http.ResponseWriter, r *http.Request) {
@@ -29,11 +35,15 @@ func (a *API) otlpLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := reqctx.WithTenant(r.Context(), tenant)
 	ctx = reqctx.WithProject(ctx, project)
+	if h := reqctx.HolderFrom(ctx); h != nil {
+		h.SetTenant(tenant)
+		h.SetProject(project)
+	}
 	r = r.WithContext(ctx)
 
 	body, err := readOTLPBody(w, r)
 	if err != nil {
-		httpx.Error(w, http.StatusRequestEntityTooLarge, "payload_too_large", err.Error())
+		writeOTLPReadError(w, err)
 		return
 	}
 	req, err := otlp.DecodeLogs(body, r.Header.Get("Content-Type"))
@@ -53,11 +63,15 @@ func (a *API) otlpTraces(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := reqctx.WithTenant(r.Context(), tenant)
 	ctx = reqctx.WithProject(ctx, project)
+	if h := reqctx.HolderFrom(ctx); h != nil {
+		h.SetTenant(tenant)
+		h.SetProject(project)
+	}
 	r = r.WithContext(ctx)
 
 	body, err := readOTLPBody(w, r)
 	if err != nil {
-		httpx.Error(w, http.StatusRequestEntityTooLarge, "payload_too_large", err.Error())
+		writeOTLPReadError(w, err)
 		return
 	}
 	req, err := otlp.DecodeTraces(body, r.Header.Get("Content-Type"))
@@ -69,10 +83,18 @@ func (a *API) otlpTraces(w http.ResponseWriter, r *http.Request) {
 	a.acceptOTLP(w, r, tenant, project, events, false)
 }
 
+func writeOTLPReadError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errOTLPTooLarge) {
+		httpx.Error(w, http.StatusRequestEntityTooLarge, "payload_too_large", err.Error())
+		return
+	}
+	httpx.Error(w, http.StatusBadRequest, "invalid_otlp_body", err.Error())
+}
+
 func readOTLPBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 	body, err := readLimited(w, r, maxOTLPBytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", errOTLPTooLarge, err)
 	}
 	if !strings.Contains(strings.ToLower(r.Header.Get("Content-Encoding")), "gzip") {
 		return body, nil
@@ -87,7 +109,7 @@ func readOTLPBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 		return nil, errors.New("无法解压 gzip OTLP 请求")
 	}
 	if len(raw) > maxOTLPBytes {
-		return nil, errors.New("解压后的 OTLP 请求超过 20MB")
+		return nil, fmt.Errorf("%w: 解压后的 OTLP 请求超过 20MB", errOTLPTooLarge)
 	}
 	return raw, nil
 }
@@ -119,6 +141,11 @@ func (a *API) otlpTarget(w http.ResponseWriter, r *http.Request) (model.Tenant, 
 func (a *API) acceptOTLP(w http.ResponseWriter, r *http.Request, tenant model.Tenant, project model.Project, events []model.Event, logs bool) {
 	if len(events) == 0 {
 		a.writeOTLPResponse(w, r, logs)
+		return
+	}
+	if len(events) > maxOTLPEvents {
+		httpx.Error(w, http.StatusRequestEntityTooLarge, "too_many_events",
+			"单次 OTLP 请求最多 5000 条日志/错误 span")
 		return
 	}
 	if !a.limiter.allow(project.ID.Hex(), len(events)) {

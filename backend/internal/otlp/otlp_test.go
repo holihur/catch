@@ -156,11 +156,41 @@ func TestSeverityLevel(t *testing.T) {
 		{logsv1.SeverityNumber_SEVERITY_NUMBER_WARN, "", "warn"},
 		{logsv1.SeverityNumber_SEVERITY_NUMBER_ERROR, "", "error"},
 		{logsv1.SeverityNumber_SEVERITY_NUMBER_FATAL, "", "fatal"},
-		{logsv1.SeverityNumber_SEVERITY_NUMBER_INFO, "WARNING", "warn"},
+		{logsv1.SeverityNumber_SEVERITY_NUMBER_INFO, "WARNING", "info"},
+		{logsv1.SeverityNumber_SEVERITY_NUMBER_UNSPECIFIED, "WARNING", "warn"},
 	}
 	for _, c := range cases {
 		if got := severityLevel(c.num, c.text); got != c.want {
 			t.Errorf("severityLevel(%v, %q) = %q, want %q", c.num, c.text, got, c.want)
 		}
+	}
+}
+
+func TestConvertTraceSpanAttributeException(t *testing.T) {
+	project := model.Project{Name: "orders"}
+	req := &collectortracev1.ExportTraceServiceRequest{
+		ResourceSpans: []*tracev1.ResourceSpans{{
+			Resource: &resourcev1.Resource{Attributes: []*commonv1.KeyValue{str("service.name", "span-service")}},
+			ScopeSpans: []*tracev1.ScopeSpans{{
+				Spans: []*tracev1.Span{{
+					TraceId: []byte{1}, SpanId: []byte{2}, Name: "checkout",
+					StartTimeUnixNano: uint64(time.Now().Add(-time.Second).UnixNano()),
+					EndTimeUnixNano:   uint64(time.Now().UnixNano()),
+					Attributes: []*commonv1.KeyValue{
+						str("exception.type", "AttributeError"),
+						str("exception.message", "attached to span"),
+						str("exception.stacktrace", "AttributeError\n    at checkout (src/checkout.ts:42:7)"),
+					},
+					Status: &tracev1.Status{Code: tracev1.Status_STATUS_CODE_OK},
+				}},
+			}},
+		}},
+	}
+	events := ConvertTraces(req, project, time.Now())
+	if len(events) != 1 {
+		t.Fatalf("expected span attribute exception to be ingested, got %d", len(events))
+	}
+	if events[0].ErrorType != "AttributeError" || events[0].Request == nil || events[0].Request.DurationMS != 1000 {
+		t.Fatalf("unexpected event: %+v", events[0])
 	}
 }

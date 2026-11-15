@@ -372,7 +372,7 @@ service:
       exporters: [otlphttp/catch]
 ```
 
-`otlphttp` 会自动拼接 `/v1/logs` 和 `/v1/traces`。
+`otlphttp` 会自动拼接 `/v1/logs` 和 `/v1/traces`；也可以把 endpoint 设为 Catch 根地址，直接使用这两个默认路径。
 
 ### SDK 环境变量
 
@@ -401,7 +401,8 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=
 - **Logs**：所有日志都会入库；ERROR/FATAL 或异常记录会生成 issue
 - **Traces**：只保留状态为 ERROR 或包含 `exception` 事件的 span；普通 span 不入库
 - **Metrics**：暂不接收
-- 请求体上限 20MB；同样受项目级 ingest 速率限制
+- 请求体上限 20MB；单次最多 5000 条日志/错误 span；同样受项目级 ingest 速率限制
+- `/v1/logs` 和 `/v1/traces` 是 OTel 默认路径别名，等价于 `/api/ingest/otlp/v1/*`
 - OTLP 的 `service.version` 必须与 Source Map 的 release 一致，才能还原压缩堆栈
 
 ## 后端日志自动捕获

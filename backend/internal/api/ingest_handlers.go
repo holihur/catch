@@ -124,6 +124,10 @@ func (a *API) ingest(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := reqctx.WithTenant(r.Context(), tenant)
 	ctx = reqctx.WithProject(ctx, project)
+	if h := reqctx.HolderFrom(ctx); h != nil {
+		h.SetTenant(tenant)
+		h.SetProject(project)
+	}
 	r = r.WithContext(ctx)
 
 	body, err := readLimited(w, r, maxIngestBytes)

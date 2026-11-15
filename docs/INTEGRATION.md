@@ -294,13 +294,16 @@ User 456 not found
 
 ---
 
-## 2.7 OpenTelemetry(OTLP) 接入
+### 2.7 OpenTelemetry(OTLP) 接入
 
 Catch 原生接收 OTLP/HTTP logs 和 traces（protobuf、JSON、gzip），使用项目 Ingest Key 认证：
 
 ```text
 POST /api/ingest/otlp/v1/logs
 POST /api/ingest/otlp/v1/traces
+# OTel 默认路径别名
+POST /v1/logs
+POST /v1/traces
 X-Ingest-Key: ck_xxx
 ```
 
@@ -331,6 +334,7 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=
 - severity ≥ ERROR 的日志和带 `exception.*` 的日志会转为 error 事件并进入问题分组
 - traces 只保留 ERROR span 或带 `exception` 事件的 span，普通 span 不入库
 - `exception.stacktrace` 可以继续走 Source Map 还原
+- 请求体上限 20MB，单次最多 5000 条日志/错误 span
 - metrics 暂不支持；gRPC 请通过 Collector 转 HTTP
 
 ## 3. 服务端集成示例

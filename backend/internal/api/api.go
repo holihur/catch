@@ -86,8 +86,6 @@ func (a *API) Routes() http.Handler {
 		api.Post("/ingest/sourcemaps", a.uploadSourceMapWithKey)
 		api.Post("/ingest/otlp/v1/logs", a.otlpLogs)
 		api.Post("/ingest/otlp/v1/traces", a.otlpTraces)
-		api.Post("/v1/logs", a.otlpLogs)
-		api.Post("/v1/traces", a.otlpTraces)
 
 		api.Group(func(pr chi.Router) {
 			pr.Use(a.authenticate)
@@ -125,6 +123,11 @@ func (a *API) Routes() http.Handler {
 			})
 		})
 	})
+
+	// OTLP default paths (otlphttp exporter appends /v1/logs and /v1/traces
+	// to its configured endpoint). These are key-authenticated like ingest.
+	r.Post("/v1/logs", a.otlpLogs)
+	r.Post("/v1/traces", a.otlpTraces)
 
 	r.NotFound(a.notFound)
 	return r

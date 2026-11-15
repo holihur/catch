@@ -206,6 +206,7 @@ func CORS(origins []string, allowAnyForIngest bool) func(http.Handler) http.Hand
 			origin := strings.TrimRight(r.Header.Get("Origin"), "/")
 			if origin != "" {
 				isIngest := strings.HasPrefix(r.URL.Path, "/api/ingest")
+				isOTLP := r.URL.Path == "/v1/logs" || r.URL.Path == "/v1/traces"
 				isSDK := r.URL.Path == "/catch-sdk.js"
 				switch {
 				case isSDK:
@@ -214,7 +215,7 @@ func CORS(origins []string, allowAnyForIngest bool) func(http.Handler) http.Hand
 					w.Header().Set("Access-Control-Allow-Origin", "*")
 					w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 					w.Header().Set("Access-Control-Max-Age", "600")
-				case allowed[origin] || (allowAnyForIngest && isIngest):
+				case allowed[origin] || (allowAnyForIngest && (isIngest || isOTLP)):
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 					w.Header().Add("Vary", "Origin")
 					w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -249,7 +250,8 @@ func CheckOrigin(allowed []string) func(http.Handler) http.Handler {
 			}
 			// Ingest is authenticated by a project key, not a cookie, and is
 			// intentionally callable from any third-party origin.
-			if strings.HasPrefix(r.URL.Path, "/api/ingest") {
+			if strings.HasPrefix(r.URL.Path, "/api/ingest") ||
+				r.URL.Path == "/v1/logs" || r.URL.Path == "/v1/traces" {
 				next.ServeHTTP(w, r)
 				return
 			}

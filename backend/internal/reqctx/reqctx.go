@@ -23,11 +23,13 @@ const (
 // and the authentication middleware. The outer request context cannot be
 // replaced by inner middleware, so auth writes into the holder instead.
 type Holder struct {
-	mu        sync.RWMutex
-	tenant    model.Tenant
-	user      model.User
-	hasTenant bool
-	hasUser   bool
+	mu         sync.RWMutex
+	tenant     model.Tenant
+	user       model.User
+	project    model.Project
+	hasTenant  bool
+	hasUser    bool
+	hasProject bool
 }
 
 func (h *Holder) SetTenant(t model.Tenant) {
@@ -52,6 +54,18 @@ func (h *Holder) User() (model.User, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.user, h.hasUser
+}
+
+func (h *Holder) SetProject(p model.Project) {
+	h.mu.Lock()
+	h.project, h.hasProject = p, true
+	h.mu.Unlock()
+}
+
+func (h *Holder) Project() (model.Project, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.project, h.hasProject
 }
 
 func WithHolder(ctx context.Context, h *Holder) context.Context {
@@ -114,6 +128,11 @@ func WithProject(ctx context.Context, p model.Project) context.Context {
 }
 
 func Project(ctx context.Context) (model.Project, bool) {
-	p, ok := ctx.Value(projectKey).(model.Project)
-	return p, ok
+	if p, ok := ctx.Value(projectKey).(model.Project); ok {
+		return p, true
+	}
+	if h := HolderFrom(ctx); h != nil {
+		return h.Project()
+	}
+	return model.Project{}, false
 }

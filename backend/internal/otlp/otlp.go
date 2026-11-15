@@ -97,7 +97,8 @@ func ConvertLogs(req *collectorlogsv1.ExportLogsServiceRequest, project model.Pr
 				}
 				level := severityLevel(record.GetSeverityNumber(), record.GetSeverityText())
 				kind := model.KindLog
-				if errType != "" || stack != "" || level == "error" || level == "fatal" {
+				if errType != "" || stack != "" || level == "error" || level == "fatal" ||
+					strings.EqualFold(record.GetEventName(), "exception") {
 					kind = model.KindError
 				}
 				ts := timestamp(record.GetTimeUnixNano(), now)
@@ -167,13 +168,21 @@ func ConvertTraces(req *collectortracev1.ExportTraceServiceRequest, project mode
 					}
 				}
 				isError := span.GetStatus().GetCode() == tracev1.Status_STATUS_CODE_ERROR
-				if !isError && exception == nil {
+				spanAttrs := attributesToMap(span.GetAttributes())
+				spanException := hasKey(span.GetAttributes(), "exception.type") ||
+					hasKey(span.GetAttributes(), "exception.message") ||
+					hasKey(span.GetAttributes(), "exception.stacktrace")
+				if !isError && exception == nil && !spanException {
 					continue
 				}
-				spanAttrs := attributesToMap(span.GetAttributes())
 				excAttrs := map[string]any{}
 				if exception != nil {
 					excAttrs = attributesToMap(exception.GetAttributes())
+				}
+				// Some SDKs attach exception.* directly to the span instead of
+				// emitting an exception event.
+				if len(excAttrs) == 0 && (isError || spanException) {
+					excAttrs = spanAttrs
 				}
 				message := stringAttribute(excAttrs, "exception.message")
 				if message == "" {
@@ -230,6 +239,9 @@ func ConvertTraces(req *collectortracev1.ExportTraceServiceRequest, project mode
 				event.Context = capContext(context)
 				event.User = userFromAttributes(spanAttrs)
 				event.Request = requestFromAttributes(spanAttrs, traceID)
+				if event.Request != nil && span.GetEndTimeUnixNano() > span.GetStartTimeUnixNano() {
+					event.Request.DurationMS = int64((span.GetEndTimeUnixNano() - span.GetStartTimeUnixNano()) / 1e6)
+				}
 				event.URL = requestURL(event.Request)
 				event.Fingerprint = ingest.Fingerprint(event.Source, event.ErrorType, event.Message, event.Culprit)
 				out = append(out, event)
@@ -383,20 +395,8 @@ func intAttribute(attrs map[string]any, keys ...string) int {
 }
 
 func severityLevel(num logsv1.SeverityNumber, text string) string {
-	switch strings.ToLower(strings.TrimSpace(text)) {
-	case "trace":
-		return "debug"
-	case "debug":
-		return "debug"
-	case "info", "notice", "log":
-		return "info"
-	case "warn", "warning":
-		return "warn"
-	case "error", "err":
-		return "error"
-	case "fatal", "critical", "crit", "panic":
-		return "fatal"
-	}
+	// Numeric severity is the normalized signal; severity text is the original
+	// vendor string and is used only when the number is unspecified.
 	switch {
 	case num >= logsv1.SeverityNumber_SEVERITY_NUMBER_FATAL:
 		return "fatal"
@@ -408,6 +408,18 @@ func severityLevel(num logsv1.SeverityNumber, text string) string {
 		return "info"
 	case num >= logsv1.SeverityNumber_SEVERITY_NUMBER_TRACE:
 		return "debug"
+	}
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "trace", "debug":
+		return "debug"
+	case "info", "notice", "log":
+		return "info"
+	case "warn", "warning":
+		return "warn"
+	case "error", "err":
+		return "error"
+	case "fatal", "critical", "crit", "panic":
+		return "fatal"
 	}
 	return "info"
 }
