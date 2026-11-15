@@ -24,7 +24,7 @@ import { useProjects } from "@/context/ProjectContext"
 import { firstSourceFrame, repoLabel } from "@/lib/source"
 import { useSourceViewer } from "@/context/SourceViewerContext"
 import { PageHeader } from "@/components/common/PageHeader"
-import { LevelBadge, LevelMark, SourceBadge, StatusBadge } from "@/components/common/Badges"
+import { LevelMark, SourceBadge, StatusBadge } from "@/components/common/Badges"
 import { CopyButton } from "@/components/common/CopyButton"
 import { ErrorState } from "@/components/common/ErrorState"
 import { StackTrace } from "@/components/common/StackTrace"
@@ -211,7 +211,7 @@ export function IssueDetailPage() {
       <PageHeader
         title={
           <span className="flex flex-wrap items-center gap-2">
-            <LevelBadge level={issue.level} />
+            <LevelMark level={issue.level} />
             <span>{issue.title}</span>
           </span>
         }
@@ -443,7 +443,7 @@ export function IssueDetailPage() {
                 <SourceBadge source={issue.source} />
               </MetaRow>
               <MetaRow label="级别">
-                <LevelBadge level={issue.level} />
+                <LevelMark level={issue.level} />
               </MetaRow>
               <MetaRow label="负责人">{issue.assigneeName || "未指派"}</MetaRow>
               <MetaRow label="首次发现">{formatFullDate(issue.firstSeen)}</MetaRow>
@@ -525,7 +525,7 @@ function EventSummary({ event, project }: { event: EventItem; project: Project |
   return (
     <div className="bg-muted/30 space-y-2 rounded-xl p-3.5">
       <div className="flex flex-wrap items-center gap-2">
-        <LevelBadge level={event.level} />
+        <LevelMark level={event.level} />
         <SourceBadge source={event.source} />
         {event.request?.method ? (
           <span className="bg-background rounded border px-1.5 py-0.5 font-mono text-[10px]">

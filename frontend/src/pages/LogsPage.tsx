@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/common/EmptyState"
 import { ErrorState } from "@/components/common/ErrorState"
 import { Pagination } from "@/components/common/Pagination"
 import { TimeRangeSelect } from "@/components/common/TimeRangeSelect"
-import { LevelBadge, LevelMark, SourceBadge } from "@/components/common/Badges"
+import { LevelMark, SourceBadge } from "@/components/common/Badges"
 import { StackTrace } from "@/components/common/StackTrace"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -297,7 +297,7 @@ function EventDetailDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex flex-wrap items-center gap-2 pr-6 text-base">
-                <LevelBadge level={event.level} />
+                <LevelMark level={event.level} />
                 <SourceBadge source={event.source} />
                 <span className="text-muted-foreground font-mono text-xs">{event.id.slice(-10)}</span>
               </DialogTitle>
