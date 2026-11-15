@@ -6,6 +6,7 @@ import { api } from "@/lib/api"
 import type { EventItem, EventsResponse } from "@/lib/types"
 import { useProjects } from "@/context/ProjectContext"
 import { useDebounce } from "@/hooks/useDebounce"
+import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { cn, formatFullDate, formatNumber, levelClass, relativeTime } from "@/lib/utils"
 import { PageHeader } from "@/components/common/PageHeader"
 import { EmptyState } from "@/components/common/EmptyState"
@@ -33,6 +34,8 @@ import {
 
 export function LogsPage() {
   const { selectedId } = useProjects()
+  const isMobile = useMediaQuery("(max-width: 767px)")
+  const pageSize = isMobile ? 20 : 50
   const [source, setSource] = React.useState("all")
   const [level, setLevel] = React.useState("all")
   const [range, setRange] = React.useState("24h")
@@ -63,7 +66,7 @@ export function LogsPage() {
           q: q || undefined,
           range,
           page,
-          pageSize: 50,
+          pageSize,
         })
         setData(res)
         setError(null)
@@ -74,7 +77,7 @@ export function LogsPage() {
         setRefreshing(false)
       }
     },
-    [selectedId, source, level, q, range, page],
+    [selectedId, source, level, q, range, page, pageSize],
   )
 
   React.useEffect(() => {
@@ -88,7 +91,7 @@ export function LogsPage() {
   }, [auto, load])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 sm:space-y-8">
       <PageHeader
         title="日志"
         description="统一查看前端与后端日志，点击任意一行查看完整上下文。"
@@ -160,71 +163,109 @@ export function LogsPage() {
         </div>
       ) : data ? (
         <>
-          <Card className="gap-0 overflow-hidden py-0">
-            {data.events.length === 0 ? (
-              <EmptyState
-                icon={<ScrollText className="size-5" />}
-                title="暂无日志"
-                description="尝试扩大时间范围、切换来源，或通过 SDK 接入后发送测试事件。"
-                className="border-0"
-              />
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[92px]">时间</TableHead>
-                    <TableHead className="w-[80px]">级别</TableHead>
-                    <TableHead className="w-[70px]">来源</TableHead>
-                    <TableHead>消息</TableHead>
-                    <TableHead className="hidden w-[110px] lg:table-cell">服务</TableHead>
-                    <TableHead className="hidden w-[120px] xl:table-cell">环境</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.events.map((e) => (
-                    <TableRow
-                      key={e.id}
-                      className="cursor-pointer"
-                      onClick={() => setSelected(e)}
-                    >
-                      <TableCell className="text-muted-foreground text-[11px] tabular-nums">
+          {data.events.length === 0 ? (
+            <EmptyState
+              icon={<ScrollText className="size-5" />}
+              title="暂无日志"
+              description="尝试扩大时间范围、切换来源，或通过 SDK 接入后发送测试事件。"
+            />
+          ) : (
+            <>
+              {/* Mobile: readable cards instead of a horizontally scrolling table */}
+              <div className="space-y-2 md:hidden">
+                {data.events.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    onClick={() => setSelected(e)}
+                    className="bg-card w-full rounded-2xl p-3.5 text-left shadow-sm transition-shadow active:shadow-md"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={cn("font-mono text-[10px] uppercase", levelClass(e.level))}
+                      >
+                        {e.level}
+                      </Badge>
+                      <SourceBadge source={e.source} />
+                      <span className="text-muted-foreground ml-auto text-[10px]">
                         {relativeTime(e.timestamp)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn("font-mono text-[10px] uppercase", levelClass(e.level))}>
-                          {e.level}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <SourceBadge source={e.source} />
-                      </TableCell>
-                      <TableCell className="max-w-[560px]">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-xs">{e.message}</span>
-                          {e.request?.status && e.request.status >= 400 ? (
-                            <Badge variant="outline" className="border-destructive/30 text-destructive shrink-0 font-mono text-[10px]">
-                              {e.request.status}
-                            </Badge>
-                          ) : null}
-                        </div>
-                        {e.culprit || e.context ? (
-                          <p className="text-muted-foreground mt-0.5 truncate text-[10px]">
-                            {e.culprit || JSON.stringify(e.context).slice(0, 160)}
-                          </p>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground hidden font-mono text-[11px] lg:table-cell">
-                        {e.service || "—"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground hidden text-[11px] xl:table-cell">
-                        {e.environment || "—"}
-                      </TableCell>
+                      </span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-sm leading-snug">
+                      {e.message}
+                    </p>
+                    <div className="text-muted-foreground mt-1.5 flex items-center gap-2 text-[10px]">
+                      {e.service ? <span className="font-mono">{e.service}</span> : null}
+                      {e.request?.status && e.request.status >= 400 ? (
+                        <span className="text-destructive font-mono">HTTP {e.request.status}</span>
+                      ) : null}
+                      {e.culprit ? (
+                        <span className="min-w-0 truncate font-mono">{e.culprit}</span>
+                      ) : null}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <Card className="hidden gap-0 overflow-hidden py-0 md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-[92px]">时间</TableHead>
+                      <TableHead className="w-[80px]">级别</TableHead>
+                      <TableHead className="w-[70px]">来源</TableHead>
+                      <TableHead>消息</TableHead>
+                      <TableHead className="hidden w-[110px] lg:table-cell">服务</TableHead>
+                      <TableHead className="hidden w-[120px] xl:table-cell">环境</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {data.events.map((e) => (
+                      <TableRow
+                        key={e.id}
+                        className="cursor-pointer"
+                        onClick={() => setSelected(e)}
+                      >
+                        <TableCell className="text-muted-foreground text-[11px] tabular-nums">
+                          {relativeTime(e.timestamp)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={cn("font-mono text-[10px] uppercase", levelClass(e.level))}>
+                            {e.level}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <SourceBadge source={e.source} />
+                        </TableCell>
+                        <TableCell className="max-w-[560px]">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-xs">{e.message}</span>
+                            {e.request?.status && e.request.status >= 400 ? (
+                              <Badge variant="outline" className="border-destructive/30 text-destructive shrink-0 font-mono text-[10px]">
+                                {e.request.status}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          {e.culprit || e.context ? (
+                            <p className="text-muted-foreground mt-0.5 truncate text-[10px]">
+                              {e.culprit || JSON.stringify(e.context).slice(0, 160)}
+                            </p>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground hidden font-mono text-[11px] lg:table-cell">
+                          {e.service || "—"}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground hidden text-[11px] xl:table-cell">
+                          {e.environment || "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            </>
+          )}
 
           {data.total > data.pageSize ? (
             <Pagination
@@ -260,11 +301,11 @@ function EventDetailDialog({ event, onClose }: { event: EventItem | null; onClos
             </DialogHeader>
 
             <div className="space-y-4 text-sm">
-              <pre className="bg-muted/40 scrollbar-thin max-h-56 overflow-auto rounded-lg border p-3 text-xs whitespace-pre-wrap">
+              <pre className="bg-muted/40 scrollbar-thin max-h-56 overflow-auto rounded-xl p-3 text-xs whitespace-pre-wrap">
                 {event.message}
               </pre>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Info label="用户">
                   {event.user?.email || event.user?.id || event.user?.username || "—"}
                 </Info>
@@ -294,7 +335,7 @@ function EventDetailDialog({ event, onClose }: { event: EventItem | null; onClos
               {event.context && Object.keys(event.context).length > 0 ? (
                 <div>
                   <p className="text-muted-foreground mb-1.5 text-xs font-medium">Context</p>
-                  <pre className="bg-muted/40 scrollbar-thin max-h-52 overflow-auto rounded-lg border p-3 text-[11px]">
+                  <pre className="bg-muted/40 scrollbar-thin max-h-52 overflow-auto rounded-xl p-3 text-[11px]">
                     {JSON.stringify(event.context, null, 2)}
                   </pre>
                 </div>
@@ -312,7 +353,7 @@ function EventDetailDialog({ event, onClose }: { event: EventItem | null; onClos
                   <p className="text-muted-foreground mb-1.5 text-xs font-medium">面包屑</p>
                   <div className="space-y-1.5">
                     {event.breadcrumbs.map((b, i) => (
-                      <div key={i} className="flex items-center gap-2 rounded border px-2 py-1.5 text-[11px]">
+                      <div key={i} className="bg-muted/30 flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px]">
                         <span className="text-muted-foreground w-16 shrink-0 font-mono">
                           {new Date(b.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}
                         </span>
@@ -341,7 +382,7 @@ function EventDetailDialog({ event, onClose }: { event: EventItem | null; onClos
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border px-3 py-2">
+    <div className="bg-muted/30 rounded-xl px-3 py-2">
       <p className="text-muted-foreground text-[10px]">{label}</p>
       <p className="mt-0.5 truncate font-mono text-xs" title={typeof children === "string" ? children : undefined}>
         {children}

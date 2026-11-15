@@ -47,7 +47,7 @@ export function StatCard({
           {delta !== undefined ? (
             <span
               className={cn(
-                "flex items-center gap-0.5 text-xs font-medium tabular-nums",
+                "flex items-center gap-0.5 text-xs font-medium whitespace-nowrap tabular-nums",
                 positive === null
                   ? "text-muted-foreground"
                   : positive
@@ -63,7 +63,7 @@ export function StatCard({
                 <ArrowDownRight className="size-3" />
               )}
               {Math.abs(delta).toFixed(1)}%
-              {deltaLabel ? <span className="text-muted-foreground ml-1">{deltaLabel}</span> : null}
+              {deltaLabel ? <span className="text-muted-foreground ml-1 hidden sm:inline">{deltaLabel}</span> : null}
             </span>
           ) : null}
         </div>

@@ -43,7 +43,7 @@ export function AppShell() {
 
   return (
     <div className="bg-background min-h-screen">
-      <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r lg:flex">
+      <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border/60 fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r lg:flex">
         <SidebarContent />
       </aside>
 
@@ -54,7 +54,7 @@ export function AppShell() {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border animate-in slide-in-from-left relative flex h-full w-72 flex-col border-r duration-200">
+          <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border animate-in slide-in-from-left relative flex h-full w-72 max-w-[86vw] flex-col border-r border-sidebar-border/60 duration-200">
             <Button
               variant="ghost"
               size="icon-sm"
@@ -70,7 +70,7 @@ export function AppShell() {
 
       <div className="lg:pl-64">
         <Topbar onOpenMenu={() => setMobileOpen(true)} />
-        <main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8">
+        <main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           <Outlet />
         </main>
       </div>
@@ -95,7 +95,7 @@ function SidebarContent() {
             Observability
           </span>
         </div>
-        <span className="border-sidebar-border text-sidebar-foreground/60 ml-auto rounded-md border px-1.5 py-0.5 font-mono text-[10px]">
+        <span className="border-sidebar-border text-sidebar-foreground/60 ml-auto hidden rounded-md border px-1.5 py-0.5 font-mono text-[10px] lg:inline-block">
           v1.0
         </span>
       </div>

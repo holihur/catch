@@ -65,7 +65,7 @@ export function OverviewPage() {
   }, [auto, load])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 sm:space-y-8">
       <PageHeader
         title="概览"
         description="前端与后端错误的实时视图，聚焦最近发生的风险与趋势。"
@@ -91,7 +91,7 @@ export function OverviewPage() {
         <OverviewSkeleton />
       ) : data ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <StatCard
               label="错误事件"
               value={data.stats.errors}
@@ -125,7 +125,7 @@ export function OverviewPage() {
             />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader className="flex flex-row items-center justify-between gap-2">
                 <div>
@@ -144,7 +144,7 @@ export function OverviewPage() {
                   </span>
                 </div>
               </CardHeader>
-              <CardContent className="h-[300px] pl-2">
+              <CardContent className="h-[240px] pl-2 sm:h-[300px]">
                 <ErrorTrendChart errors={data.timeseries.errors} logs={data.timeseries.logs} />
               </CardContent>
             </Card>
@@ -160,7 +160,7 @@ export function OverviewPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base">最近错误</CardTitle>
@@ -188,8 +188,10 @@ export function OverviewPage() {
                             {e.message.split("\n")[0]}
                           </p>
                           <div className="text-muted-foreground mt-1 flex items-center gap-2 text-[11px]">
-                            <SourceBadge source={e.source} className="scale-90" />
-                            <span className="truncate font-mono">{e.culprit || e.service || e.url}</span>
+                            <SourceBadge source={e.source} className="shrink-0 scale-90" />
+                            <span className="min-w-0 flex-1 truncate font-mono">
+                              {e.culprit || e.service || e.url}
+                            </span>
                             <span className="shrink-0">· {relativeTime(e.timestamp)}</span>
                           </div>
                         </div>
@@ -268,12 +270,12 @@ export function OverviewPage() {
 function OverviewSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-[132px] rounded-xl" />
         ))}
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
         <Skeleton className="h-[390px] rounded-xl lg:col-span-2" />
         <Skeleton className="h-[390px] rounded-xl" />
       </div>

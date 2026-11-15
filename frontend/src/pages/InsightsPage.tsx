@@ -68,7 +68,7 @@ export function InsightsPage() {
   }, [load])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 sm:space-y-8">
       <PageHeader
         title="持续改进"
         description="把错误数据转化为可执行的改进项：健康分、回归、修复效率和趋势洞察。"
@@ -87,7 +87,7 @@ export function InsightsPage() {
       {loading && !data ? (
         <div className="space-y-4">
           <Skeleton className="h-52 rounded-xl" />
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-28 rounded-xl" />
             ))}
@@ -96,9 +96,9 @@ export function InsightsPage() {
         </div>
       ) : data ? (
         <>
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
             <HealthCard data={data} />
-            <div className="grid gap-4 sm:grid-cols-2 lg:col-span-2">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:col-span-2">
               <StatCard
                 label="平均修复时长"
                 value={data.metrics.mttrHours > 0 ? `${data.metrics.mttrHours.toFixed(1)}h` : "—"}
@@ -130,7 +130,7 @@ export function InsightsPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
@@ -148,7 +148,7 @@ export function InsightsPage() {
                   </span>
                 </div>
               </CardHeader>
-              <CardContent className="h-[260px] pl-1">
+              <CardContent className="h-[230px] pl-1 sm:h-[260px]">
                 <IssueTrendChart data={data.trend} />
               </CardContent>
             </Card>
@@ -166,7 +166,7 @@ export function InsightsPage() {
                   format="percent"
                   warn={0.3}
                 />
-                <div className="grid grid-cols-2 gap-3 border-t pt-3 text-sm">
+                <div className="grid grid-cols-2 gap-3 border-t border-border/50 pt-3 text-sm">
                   <MiniMetric label="待处理" value={formatNumber(data.metrics.openIssues)} />
                   <MiniMetric label="已解决" value={formatNumber(data.metrics.resolvedIssues)} />
                   <MiniMetric label="已忽略" value={formatNumber(data.metrics.ignoredIssues)} />
@@ -178,7 +178,7 @@ export function InsightsPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -210,7 +210,7 @@ export function InsightsPage() {
                       <Link
                         key={s.issueId}
                         to={`/issues/${s.issueId}`}
-                        className="hover:bg-muted/50 block rounded-lg border p-3 transition-colors"
+                        className="hover:bg-muted/50 block rounded-xl bg-muted/20 p-3 transition-colors"
                       >
                         <p className="line-clamp-2 text-xs font-medium">{s.title}</p>
                         <div className="text-muted-foreground mt-2 flex items-center gap-2 text-[11px]">
@@ -269,7 +269,7 @@ export function InsightsPage() {
                 <p className="text-sm font-medium">改进闭环</p>
                 <span className="text-muted-foreground text-xs">从发现到验证，每一步都有数据支撑</span>
               </div>
-              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                 {[
                   { icon: Bug, title: "捕获", desc: "前端 / 后端事件" },
                   { icon: GitBranch, title: "归并", desc: "指纹聚合与回归" },
@@ -278,7 +278,7 @@ export function InsightsPage() {
                   { icon: ShieldCheck, title: "验证", desc: "回归与趋势对比" },
                   { icon: TrendingUp, title: "复盘", desc: "健康分与改进建议" },
                 ].map((step, i) => (
-                  <div key={step.title} className="bg-muted/30 rounded-lg border p-3">
+                  <div key={step.title} className="bg-muted/30 rounded-xl p-3">
                     <div className="text-muted-foreground mb-2 flex items-center justify-between">
                       <step.icon className="size-4" />
                       <span className="font-mono text-[10px]">0{i + 1}</span>
@@ -347,27 +347,27 @@ function HealthCard({ data }: { data: Insights }) {
   )
 }
 
-const SEVERITY_STYLE: Record<string, { border: string; icon: React.ReactNode; badge: string; label: string }> = {
+const SEVERITY_STYLE: Record<string, { surface: string; icon: React.ReactNode; badge: string; label: string }> = {
   critical: {
-    border: "border-destructive/30 bg-destructive/5",
+    surface: "bg-destructive/5",
     icon: <AlertTriangle className="text-destructive size-4" />,
     badge: "border-destructive/30 text-destructive",
     label: "紧急",
   },
   warning: {
-    border: "border-warning/30 bg-warning/5",
+    surface: "bg-warning/5",
     icon: <AlertTriangle className="text-warning size-4" />,
     badge: "border-warning/40 text-warning-foreground dark:text-warning",
     label: "警告",
   },
   info: {
-    border: "",
+    surface: "bg-muted/30",
     icon: <Info className="text-chart-2 size-4" />,
     badge: "border-chart-2/40 text-chart-2",
     label: "建议",
   },
   success: {
-    border: "border-success/30 bg-success/5",
+    surface: "bg-success/5",
     icon: <CheckCircle2 className="text-success size-4" />,
     badge: "border-success/40 text-success",
     label: "健康",
@@ -377,7 +377,7 @@ const SEVERITY_STYLE: Record<string, { border: string; icon: React.ReactNode; ba
 function SuggestionCard({ suggestion }: { suggestion: Suggestion }) {
   const style = SEVERITY_STYLE[suggestion.severity] ?? SEVERITY_STYLE.info
   return (
-    <div className={cn("rounded-lg border p-3.5", style.border)}>
+    <div className={cn("rounded-xl p-4", style.surface)}>
       <div className="flex items-start gap-3">
         <div className="mt-0.5 shrink-0">{style.icon}</div>
         <div className="min-w-0 flex-1">

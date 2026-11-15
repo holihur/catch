@@ -142,7 +142,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
+    <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[1.05fr_1fr]">
       <section className="bg-sidebar text-sidebar-foreground relative hidden overflow-hidden lg:flex lg:flex-col lg:justify-between">
         <div className="bg-login-glow absolute inset-0 opacity-80" />
         <div className="bg-dot-grid absolute inset-0 opacity-[0.08]" />
@@ -172,7 +172,7 @@ export function LoginPage() {
             统一收集前端与后端日志、错误和上下文，自动归并问题、量化质量趋势，让每一次修复都有据可依。
           </p>
 
-          <div className="mt-10 grid grid-cols-2 gap-4">
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:mt-10 sm:gap-4">
             {[
               { icon: Bug, title: "错误聚合", desc: "指纹归并 · 回归检测" },
               { icon: ScrollText, title: "统一日志", desc: "前端 / 后端 / 上下文" },

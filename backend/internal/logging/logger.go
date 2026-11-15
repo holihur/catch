@@ -2,6 +2,8 @@ package logging
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -285,8 +287,32 @@ func valueToAny(v slog.Value) any {
 	case slog.KindBool:
 		return v.Bool()
 	default:
-		return v.Any()
+		return safeAny(v.Any())
 	}
+}
+
+// safeAny converts arbitrary slog values (errors, structs, contexts) into
+// BSON-friendly values. Without this, logging `"error", err` can silently fail
+// to persist because Go error implementations are not encodable by BSON.
+func safeAny(value any) any {
+	if value == nil {
+		return nil
+	}
+	if err, ok := value.(error); ok {
+		return err.Error()
+	}
+	if s, ok := value.(fmt.Stringer); ok {
+		return s.String()
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprint(value)
+	}
+	var out any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return string(raw)
+	}
+	return out
 }
 
 // Truncate caps a string to n bytes on a UTF-8 boundary.

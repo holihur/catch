@@ -166,7 +166,7 @@
     text-wrap: balance;
   }
   .card-hover {
-    @apply transition-colors duration-200 hover:border-primary/30;
+    @apply transition-shadow duration-200 hover:shadow-md;
   }
   .scrollbar-thin {
     scrollbar-width: thin;

@@ -12,8 +12,8 @@ export function StackTrace({ stack, className }: { stack?: string; className?: s
   const lines = stack.split("\n")
   const visible = expanded ? lines : lines.slice(0, 3)
   return (
-    <div className={cn("bg-muted/40 rounded-lg border", className)}>
-      <div className="flex items-center justify-between gap-2 border-b px-3 py-1.5">
+    <div className={cn("bg-muted/40 rounded-xl", className)}>
+      <div className="flex items-center justify-between gap-2 px-3 py-2">
         <span className="text-muted-foreground text-xs font-medium">Stack trace</span>
         <div className="flex items-center gap-1">
           <CopyButton value={stack} label="复制堆栈" />

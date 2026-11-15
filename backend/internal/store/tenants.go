@@ -61,7 +61,7 @@ func (s *Store) ListTenants(ctx context.Context) ([]model.Tenant, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out []model.Tenant
+	out := make([]model.Tenant, 0)
 	err = cur.All(ctx, &out)
 	return out, err
 }
@@ -197,7 +197,7 @@ func (s *Store) ListUsers(ctx context.Context, tenantID primitive.ObjectID) ([]m
 	if err != nil {
 		return nil, err
 	}
-	var out []model.User
+	out := make([]model.User, 0)
 	err = cur.All(ctx, &out)
 	return out, err
 }

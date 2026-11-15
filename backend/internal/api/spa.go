@@ -32,7 +32,16 @@ func (a *API) serveSPA(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
+		if clean == "/catch-sdk.js" {
+			w.Header().Set("Cache-Control", "public, max-age=300")
+		}
 		http.ServeFile(w, r, abs)
+		return
+	}
+	// Missing static assets must not fall back to index.html: that breaks MIME
+	// checks and hides deploy/cache mistakes.
+	if strings.HasPrefix(clean, "/assets/") || strings.Contains(filepath.Base(clean), ".") {
+		httpx.Error(w, http.StatusNotFound, "asset_not_found", "静态资源不存在")
 		return
 	}
 	index := filepath.Join(root, "index.html")

@@ -188,10 +188,12 @@ func (a *API) health(w http.ResponseWriter, r *http.Request) {
 		code = http.StatusServiceUnavailable
 	}
 	httpx.JSON(w, code, map[string]any{
-		"status":    status,
-		"version":   Version,
-		"uptimeSec": int64(time.Since(a.startedAt).Seconds()),
-		"now":       time.Now().UTC(),
+		"status":           status,
+		"version":          Version,
+		"uptimeSec":        int64(time.Since(a.startedAt).Seconds()),
+		"now":              time.Now().UTC(),
+		"logDropped":       a.logger.Dropped(),
+		"logPersistFailed": a.logger.Failed(),
 	})
 }
 
@@ -203,7 +205,7 @@ func (a *API) version(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) notFound(w http.ResponseWriter, r *http.Request) {
-	if strings.HasPrefix(r.URL.Path, "/api/") {
+	if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
 		httpx.Error(w, http.StatusNotFound, "not_found", "接口不存在")
 		return
 	}

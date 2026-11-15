@@ -76,6 +76,9 @@ func (a *API) getIssue(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.logError(r, "load issue trend failed", err)
 	}
+	if trend == nil {
+		trend = []store.Bucket{}
+	}
 	actors, _ := a.store.DistinctActorsForIssue(r.Context(), t.ID, id)
 	var projectName string
 	if !issue.ProjectID.IsZero() {

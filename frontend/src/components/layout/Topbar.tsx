@@ -45,11 +45,11 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
   const page = pageTitle(location.pathname)
 
   return (
-    <header className="bg-background/80 sticky top-0 z-20 flex h-16 items-center gap-3 border-b px-4 backdrop-blur-md sm:px-6 lg:px-8">
+    <header className="bg-background/80 sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-border/60 px-3 backdrop-blur-md sm:h-16 sm:gap-3 sm:px-6 lg:px-8">
       <Button variant="ghost" size="icon-sm" className="lg:hidden" onClick={onOpenMenu}>
         <Menu className="size-4" />
       </Button>
-      <div className="min-w-0">
+      <div className="hidden min-w-0 sm:block">
         <div className="text-muted-foreground flex items-center gap-1.5 text-[11px]">
           <span className="truncate">{me?.tenant.name}</span>
           <span>/</span>
@@ -58,13 +58,13 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
         <h2 className="truncate text-sm font-semibold">{page}</h2>
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
         <Select
           value={selectedId || "all"}
           onValueChange={(v) => setSelectedId(v === "all" ? "" : v)}
           disabled={loading}
         >
-          <SelectTrigger className="h-8 w-[180px] text-xs" aria-label="选择项目">
+          <SelectTrigger className="h-8 w-[140px] text-xs sm:w-[180px]" aria-label="选择项目">
             <SelectValue placeholder="全部项目" />
           </SelectTrigger>
           <SelectContent>

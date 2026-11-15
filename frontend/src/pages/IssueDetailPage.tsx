@@ -136,7 +136,7 @@ export function IssueDetailPage() {
       <div className="space-y-4">
         <Skeleton className="h-8 w-40" />
         <Skeleton className="h-24 rounded-xl" />
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
           <Skeleton className="h-[420px] rounded-xl lg:col-span-2" />
           <Skeleton className="h-[420px] rounded-xl" />
         </div>
@@ -158,7 +158,7 @@ export function IssueDetailPage() {
   if (!data || !issue) return null
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 sm:space-y-8">
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild variant="ghost" size="sm">
           <Link to="/issues">
@@ -229,21 +229,21 @@ export function IssueDetailPage() {
       />
 
       {issue.regressionCount > 0 ? (
-        <div className="border-destructive/25 bg-destructive/5 text-destructive flex items-center gap-2 rounded-lg border px-4 py-3 text-sm">
+        <div className="bg-destructive/5 text-destructive flex items-center gap-2 rounded-xl px-4 py-3 text-sm">
           <GitBranch className="size-4" />
           该问题已回归 {issue.regressionCount} 次，请检查修复是否覆盖根因，并补充回归测试。
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <MetricBox label="发生次数" value={formatNumber(issue.count)} icon={<RefreshCw className="size-4" />} />
         <MetricBox label="影响用户" value={formatNumber(data.userCount)} icon={<UserRound className="size-4" />} />
         <MetricBox label="首次发现" value={relativeTime(issue.firstSeen)} hint={formatFullDate(issue.firstSeen)} icon={<Clock className="size-4" />} />
         <MetricBox label="最近发生" value={relativeTime(issue.lastSeen)} hint={formatFullDate(issue.lastSeen)} icon={<Clock className="size-4" />} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
+        <div className="space-y-4 sm:space-y-5 lg:col-span-2">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="text-base">事件详情</CardTitle>
@@ -276,7 +276,7 @@ export function IssueDetailPage() {
                   {selectedEvent?.breadcrumbs?.length ? (
                     <div className="space-y-2">
                       {selectedEvent.breadcrumbs.map((b, i) => (
-                        <div key={i} className="flex gap-3 rounded-lg border px-3 py-2 text-xs">
+                        <div key={i} className="bg-muted/30 flex gap-3 rounded-xl px-3 py-2.5 text-xs">
                           <span className="text-muted-foreground w-20 shrink-0 font-mono">
                             {new Date(b.timestamp).toLocaleTimeString("zh-CN", { hour12: false })}
                           </span>
@@ -314,13 +314,13 @@ export function IssueDetailPage() {
                   ) : null}
                   <div>
                     <p className="text-muted-foreground mb-2 text-xs font-medium">Context</p>
-                    <pre className="bg-muted/40 scrollbar-thin max-h-80 overflow-auto rounded-lg border p-3 text-xs">
+                    <pre className="bg-muted/40 scrollbar-thin max-h-80 overflow-auto rounded-xl p-3 text-xs">
                       {JSON.stringify(selectedEvent?.context ?? {}, null, 2)}
                     </pre>
                   </div>
                 </TabsContent>
                 <TabsContent value="events" className="pt-3">
-                  <div className="divide-y rounded-lg border">
+                  <div className="divide-y divide-border/40 rounded-xl bg-muted/20">
                     {data.events.map((e) => (
                       <button
                         key={e.id}
@@ -362,7 +362,7 @@ export function IssueDetailPage() {
                       <div className="bg-primary/10 text-primary flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold">
                         {c.authorName.slice(0, 1).toUpperCase()}
                       </div>
-                      <div className="min-w-0 flex-1 rounded-lg border px-3 py-2">
+                      <div className="bg-muted/30 min-w-0 flex-1 rounded-xl px-3 py-2.5">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-medium">{c.authorName}</span>
                           <span className="text-muted-foreground text-[10px]">{relativeTime(c.createdAt)}</span>
@@ -392,7 +392,7 @@ export function IssueDetailPage() {
           </Card>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 sm:space-y-5">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">发生趋势（7 天）</CardTitle>
@@ -482,7 +482,7 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 
 function EventSummary({ event }: { event: EventItem }) {
   return (
-    <div className="bg-muted/30 space-y-2 rounded-lg border p-3">
+    <div className="bg-muted/30 space-y-2 rounded-xl p-3.5">
       <div className="flex flex-wrap items-center gap-2">
         <LevelBadge level={event.level} />
         <SourceBadge source={event.source} />

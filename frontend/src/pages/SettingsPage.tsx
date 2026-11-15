@@ -91,7 +91,7 @@ export function SettingsPage() {
   }, [load])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 sm:space-y-8">
       <PageHeader
         title="设置"
         description="管理项目、采集密钥、成员角色与 OIDC 单点登录。"
@@ -105,7 +105,7 @@ export function SettingsPage() {
       {error && !tenantRes ? <ErrorState error={error} onRetry={() => void load()} /> : null}
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-        <TabsList className="h-auto flex-wrap justify-start">
+        <TabsList className="grid h-auto w-full grid-cols-2 gap-1 p-1 sm:inline-flex sm:w-fit">
           <TabsTrigger value="projects">
             <KeyRound className="size-3.5" /> 项目与密钥
           </TabsTrigger>
@@ -121,19 +121,19 @@ export function SettingsPage() {
         </TabsList>
 
         <TabsContent value="projects" className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-medium">采集项目</p>
               <p className="text-muted-foreground text-xs">每个项目拥有独立采集密钥，用于隔离不同应用的事件。</p>
             </div>
             {canManage ? (
-              <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Button size="sm" className="self-start sm:self-auto" onClick={() => setCreateOpen(true)}>
                 <Plus className="size-4" /> 新建项目
               </Button>
             ) : null}
           </div>
           {loading && projects.length === 0 ? (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Skeleton className="h-44 rounded-xl" />
               <Skeleton className="h-44 rounded-xl" />
             </div>
@@ -144,7 +144,7 @@ export function SettingsPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {projects.map((p) => (
                 <Card key={p.id} className="gap-4">
                   <CardHeader className="flex flex-row items-start justify-between space-y-0">
@@ -175,7 +175,7 @@ export function SettingsPage() {
                       <p className="text-muted-foreground mb-1 text-[10px] font-medium tracking-wider uppercase">
                         Ingest Key
                       </p>
-                      <div className="bg-muted/50 flex items-center gap-2 rounded-md border px-2 py-1.5">
+                      <div className="bg-muted/50 flex items-center gap-2 rounded-xl px-3 py-2">
                         <code className="min-w-0 flex-1 truncate font-mono text-[11px]">{p.ingestKey}</code>
                         <CopyButton value={p.ingestKey} label="复制采集密钥" />
                       </div>
@@ -223,6 +223,48 @@ export function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="space-y-2 md:hidden">
+                {members.map((m) => (
+                  <div key={m.id} className="bg-muted/30 flex items-center gap-3 rounded-xl p-3">
+                    <div className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
+                      {(m.name || m.email).slice(0, 1).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{m.name || m.email}</p>
+                      <p className="text-muted-foreground truncate text-[11px]">{m.email}</p>
+                    </div>
+                    {canManage && m.role !== "owner" && m.id !== me?.user.id ? (
+                      <Select value={m.role} onValueChange={(role) => void changeRole(m, role)}>
+                        <SelectTrigger className="h-7 w-[104px] text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="viewer">Viewer</SelectItem>
+                          <SelectItem value="member">Member</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge variant="outline" className="shrink-0 font-mono text-[10px]">
+                        {ROLE_LABEL[m.role] ?? m.role}
+                      </Badge>
+                    )}
+                    {canManage && m.role !== "owner" && m.id !== me?.user.id ? (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-destructive shrink-0"
+                        title="移除成员"
+                        onClick={() => void removeMember(m)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden md:block">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -286,6 +328,7 @@ export function SettingsPage() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -443,7 +486,7 @@ function CreateProjectDialog({
               autoFocus
             />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="project-slug">标识（可选）</Label>
               <Input
@@ -593,7 +636,7 @@ function TenantSettings({
         </CardHeader>
         <CardContent>
           <form onSubmit={saveOIDC} className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border p-3">
+            <div className="bg-muted/30 flex items-center justify-between rounded-xl p-4">
               <div>
                 <p className="text-sm font-medium">启用 OIDC 登录</p>
                 <p className="text-muted-foreground text-xs">
@@ -603,7 +646,7 @@ function TenantSettings({
               <Switch checked={enabled} onCheckedChange={setEnabled} disabled={!canManage} />
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="issuer">Issuer</Label>
                 <Input
@@ -657,7 +700,7 @@ function TenantSettings({
               </div>
             </div>
 
-            <div className="bg-muted/40 space-y-2 rounded-lg border p-3 text-xs">
+            <div className="bg-muted/40 space-y-2 rounded-xl p-4 text-xs">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-muted-foreground">回调地址（需在身份提供方注册）</p>
@@ -771,8 +814,8 @@ Content-Type: application/json
           </CardTitle>
           <CardDescription>浏览器 SDK 与后端服务使用同一个采集接口，按项目密钥隔离。</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border p-3">
+        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="bg-muted/30 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">浏览器 SDK</span>
               <Badge variant="outline" className={telemetryEnabled() ? "border-success/40 text-success" : "border-warning/40"}>
@@ -786,7 +829,7 @@ Content-Type: application/json
               环境 {info.environment} · 版本 {info.release}
             </p>
           </div>
-          <div className="rounded-lg border p-3">
+          <div className="bg-muted/30 rounded-xl p-4">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">当前项目</span>
               <Badge variant="outline" className="font-mono text-[10px]">
@@ -836,7 +879,7 @@ function CodeCard({ title, description, code }: { title: string; description: st
         </Button>
       </CardHeader>
       <CardContent>
-        <pre className="bg-muted/40 scrollbar-thin overflow-x-auto rounded-lg border p-3 font-mono text-[11px] leading-relaxed">
+        <pre className="bg-muted/40 scrollbar-thin overflow-x-auto rounded-xl p-3.5 font-mono text-[11px] leading-relaxed">
           {code}
         </pre>
       </CardContent>

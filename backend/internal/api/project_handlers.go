@@ -166,6 +166,10 @@ func (a *API) deleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.store.DeleteProject(r.Context(), t.ID, id); err != nil {
+		if store.IsNoDocuments(err) {
+			httpx.Error(w, http.StatusNotFound, "project_not_found", "项目不存在")
+			return
+		}
 		a.logError(r, "delete project failed", err)
 		httpx.Error(w, http.StatusInternalServerError, "internal_error", "无法删除项目")
 		return

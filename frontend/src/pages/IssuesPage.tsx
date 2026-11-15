@@ -76,7 +76,7 @@ export function IssuesPage() {
   }, [load])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 sm:space-y-8">
       <PageHeader
         title="问题"
         description="按指纹自动归并的错误分组，跟踪状态、回归和负责人。"
@@ -167,8 +167,8 @@ export function IssuesPage() {
               }
             />
           ) : (
-            <Card className="gap-0 overflow-hidden py-0">
-              <div className="divide-y">
+            <Card className="gap-0 overflow-hidden py-2">
+              <div className="space-y-0.5 px-2">
                 {data.issues.map((issue) => (
                   <IssueRow key={issue.id} issue={issue} onOpen={() => navigate(`/issues/${issue.id}`)} />
                 ))}
@@ -202,7 +202,7 @@ function IssueRow({ issue, onOpen }: { issue: Issue; onOpen: () => void }) {
           onOpen()
         }
       }}
-      className="group hover:bg-muted/40 flex cursor-pointer flex-col gap-3 px-4 py-3.5 transition-colors sm:flex-row sm:items-center"
+      className="group hover:bg-muted/40 flex cursor-pointer items-start gap-3 rounded-xl px-3 py-3.5 transition-colors sm:items-center"
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <LevelBadge level={issue.level} className="mt-0.5 shrink-0" />
@@ -233,15 +233,9 @@ function IssueRow({ issue, onOpen }: { issue: Issue; onOpen: () => void }) {
           </div>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-6 pl-1 sm:pl-0">
-        <div className="text-right">
-          <p className="text-sm font-semibold tabular-nums">{formatNumber(issue.count)}</p>
-          <p className="text-muted-foreground text-[10px]">次发生</p>
-        </div>
-        <div className="hidden w-24 text-right sm:block">
-          <p className="text-xs tabular-nums">{relativeTime(issue.lastSeen)}</p>
-          <p className="text-muted-foreground text-[10px]">最近发生</p>
-        </div>
+      <div className="shrink-0 pl-1 text-right sm:w-24 sm:pl-0">
+        <p className="text-sm font-semibold tabular-nums">{formatNumber(issue.count)}</p>
+        <p className="text-muted-foreground text-[10px]">{relativeTime(issue.lastSeen)}</p>
       </div>
     </div>
   )

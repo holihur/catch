@@ -57,7 +57,15 @@ func (f EventFilter) match() bson.M {
 		m["timestamp"] = r
 	}
 	if q := strings.TrimSpace(f.Query); q != "" {
-		m["message"] = primitive.Regex{Pattern: regexp.QuoteMeta(q), Options: "i"}
+		re := primitive.Regex{Pattern: regexp.QuoteMeta(q), Options: "i"}
+		m["$or"] = bson.A{
+			bson.M{"message": re},
+			bson.M{"service": re},
+			bson.M{"culprit": re},
+			bson.M{"release": re},
+			bson.M{"stack": re},
+			bson.M{"request.requestId": re},
+		}
 	}
 	return m
 }
@@ -155,7 +163,7 @@ func (s *Store) Timeseries(ctx context.Context, tenantID primitive.ObjectID, pro
 	if err != nil {
 		return nil, err
 	}
-	var out []Bucket
+	out := make([]Bucket, 0)
 	if err := cur.All(ctx, &out); err != nil {
 		return nil, err
 	}
@@ -248,7 +256,7 @@ func (s *Store) EventCountsByIssue(ctx context.Context, tenantID, issueID primit
 	if err != nil {
 		return nil, err
 	}
-	var out []Bucket
+	out := make([]Bucket, 0)
 	if err := cur.All(ctx, &out); err != nil {
 		return nil, err
 	}
