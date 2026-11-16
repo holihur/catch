@@ -319,25 +319,26 @@ func AtLeast(role, min string) bool {
 
 // AlertRule defines a metric threshold that is evaluated periodically.
 type AlertRule struct {
-	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	TenantID      primitive.ObjectID `bson:"tenantId" json:"tenantId"`
-	ProjectID     primitive.ObjectID `bson:"projectId" json:"projectId"`
-	Name          string             `bson:"name" json:"name"`
-	Metric        string             `bson:"metric" json:"metric"`
-	Service       string             `bson:"service,omitempty" json:"service,omitempty"`
-	Aggregation   string             `bson:"aggregation" json:"aggregation"`
-	Operator      string             `bson:"operator" json:"operator"`
-	Threshold     float64            `bson:"threshold" json:"threshold"`
-	WindowSeconds int                `bson:"windowSeconds" json:"windowSeconds"`
-	Severity      string             `bson:"severity" json:"severity"`
-	Enabled       bool               `bson:"enabled" json:"enabled"`
-	State         string             `bson:"state" json:"state"`
-	Value         float64            `bson:"value" json:"value"`
-	HasData       bool               `bson:"hasData" json:"hasData"`
-	LastEvaluated time.Time          `bson:"lastEvaluated,omitempty" json:"lastEvaluated,omitempty"`
-	FiredAt       *time.Time         `bson:"firedAt,omitempty" json:"firedAt,omitempty"`
-	CreatedAt     time.Time          `bson:"createdAt" json:"createdAt"`
-	UpdatedAt     time.Time          `bson:"updatedAt" json:"updatedAt"`
+	ID            primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
+	TenantID      primitive.ObjectID   `bson:"tenantId" json:"tenantId"`
+	ProjectID     primitive.ObjectID   `bson:"projectId" json:"projectId"`
+	Name          string               `bson:"name" json:"name"`
+	Metric        string               `bson:"metric" json:"metric"`
+	Service       string               `bson:"service,omitempty" json:"service,omitempty"`
+	Aggregation   string               `bson:"aggregation" json:"aggregation"`
+	Operator      string               `bson:"operator" json:"operator"`
+	Threshold     float64              `bson:"threshold" json:"threshold"`
+	WindowSeconds int                  `bson:"windowSeconds" json:"windowSeconds"`
+	Severity      string               `bson:"severity" json:"severity"`
+	ChannelIDs    []primitive.ObjectID `bson:"channelIds,omitempty" json:"channelIds,omitempty"`
+	Enabled       bool                 `bson:"enabled" json:"enabled"`
+	State         string               `bson:"state" json:"state"`
+	Value         float64              `bson:"value" json:"value"`
+	HasData       bool                 `bson:"hasData" json:"hasData"`
+	LastEvaluated time.Time            `bson:"lastEvaluated,omitempty" json:"lastEvaluated,omitempty"`
+	FiredAt       *time.Time           `bson:"firedAt,omitempty" json:"firedAt,omitempty"`
+	CreatedAt     time.Time            `bson:"createdAt" json:"createdAt"`
+	UpdatedAt     time.Time            `bson:"updatedAt" json:"updatedAt"`
 }
 
 // Alert is one firing episode of an alert rule.
@@ -358,4 +359,41 @@ type Alert struct {
 	StartedAt  time.Time          `bson:"startedAt" json:"startedAt"`
 	ResolvedAt *time.Time         `bson:"resolvedAt,omitempty" json:"resolvedAt,omitempty"`
 	UpdatedAt  time.Time          `bson:"updatedAt" json:"updatedAt"`
+}
+
+// NotificationChannel is a tenant-level destination for alert notifications.
+type NotificationChannel struct {
+	ID               primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	TenantID         primitive.ObjectID `bson:"tenantId" json:"tenantId"`
+	Name             string             `bson:"name" json:"name"`
+	Type             string             `bson:"type" json:"type"`
+	Enabled          bool               `bson:"enabled" json:"enabled"`
+	WebhookURL       string             `bson:"webhookUrl,omitempty" json:"webhookUrl,omitempty"`
+	WebhookSecretEnc string             `bson:"webhookSecretEnc,omitempty" json:"-"`
+	WebhookSecretSet bool               `bson:"-" json:"secretSet"`
+	Recipients       []string           `bson:"recipients,omitempty" json:"recipients,omitempty"`
+	CreatedAt        time.Time          `bson:"createdAt" json:"createdAt"`
+	UpdatedAt        time.Time          `bson:"updatedAt" json:"updatedAt"`
+}
+
+// NotificationDelivery is a queued alert notification with retry metadata.
+type NotificationDelivery struct {
+	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	TenantID      primitive.ObjectID `bson:"tenantId" json:"tenantId"`
+	ProjectID     primitive.ObjectID `bson:"projectId" json:"projectId"`
+	AlertID       primitive.ObjectID `bson:"alertId" json:"alertId"`
+	RuleID        primitive.ObjectID `bson:"ruleId" json:"ruleId"`
+	ChannelID     primitive.ObjectID `bson:"channelId" json:"channelId"`
+	ChannelName   string             `bson:"channelName" json:"channelName"`
+	ChannelType   string             `bson:"channelType" json:"channelType"`
+	Event         string             `bson:"event" json:"event"`
+	Status        string             `bson:"status" json:"status"`
+	Attempts      int                `bson:"attempts" json:"attempts"`
+	StatusCode    int                `bson:"statusCode,omitempty" json:"statusCode,omitempty"`
+	Error         string             `bson:"error,omitempty" json:"error,omitempty"`
+	Payload       string             `bson:"payload" json:"-"`
+	NextAttemptAt time.Time          `bson:"nextAttemptAt" json:"nextAttemptAt"`
+	SentAt        *time.Time         `bson:"sentAt,omitempty" json:"sentAt,omitempty"`
+	CreatedAt     time.Time          `bson:"createdAt" json:"createdAt"`
+	UpdatedAt     time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

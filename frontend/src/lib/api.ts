@@ -22,6 +22,9 @@ import type {
   AlertRule,
   AlertRulesResponse,
   AlertsResponse,
+  NotificationChannel,
+  NotificationChannelsResponse,
+  NotificationDeliveriesResponse,
   TenantResponse,
   User,
 } from "./types"
@@ -229,6 +232,7 @@ export const api = {
     severity: string
     enabled?: boolean
     projectId?: string
+    channelIds?: string[]
   }) => request<AlertRule>("/api/alert-rules", { method: "POST", body }),
   updateAlertRule: (
     id: string,
@@ -242,12 +246,42 @@ export const api = {
       windowSeconds?: number
       severity?: string
       enabled?: boolean
+      channelIds?: string[]
     },
   ) => request<AlertRule>(`/api/alert-rules/${id}`, { method: "PATCH", body }),
   deleteAlertRule: (id: string) =>
     request<{ ok: boolean }>(`/api/alert-rules/${id}`, { method: "DELETE" }),
   alerts: (params: { projectId?: string; status?: string }) =>
     request<AlertsResponse>(`/api/alerts${qs(params)}`),
+  notificationChannels: () =>
+    request<NotificationChannelsResponse>("/api/notification-channels"),
+  createNotificationChannel: (body: {
+    name: string
+    type: "webhook" | "email"
+    enabled?: boolean
+    webhookUrl?: string
+    secret?: string
+    recipients?: string[]
+  }) => request<NotificationChannel>("/api/notification-channels", { method: "POST", body }),
+  updateNotificationChannel: (
+    id: string,
+    body: {
+      name?: string
+      type?: "webhook" | "email"
+      enabled?: boolean
+      webhookUrl?: string
+      secret?: string
+      recipients?: string[]
+    },
+  ) => request<NotificationChannel>(`/api/notification-channels/${id}`, { method: "PATCH", body }),
+  deleteNotificationChannel: (id: string) =>
+    request<{ ok: boolean }>(`/api/notification-channels/${id}`, { method: "DELETE" }),
+  testNotificationChannel: (id: string) =>
+    request<{ ok: boolean; statusCode?: number }>(`/api/notification-channels/${id}/test`, {
+      method: "POST",
+    }),
+  notificationDeliveries: (params: { status?: string; limit?: number }) =>
+    request<NotificationDeliveriesResponse>(`/api/notification-deliveries${qs(params)}`),
 
   // analytics
   overview: (params: { projectId?: string; range?: string }) =>

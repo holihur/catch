@@ -30,15 +30,15 @@ func TestBuildAlertRuleValidation(t *testing.T) {
 	tenant := primitive.NewObjectID()
 	project := primitive.NewObjectID()
 	threshold := 10.0
-	rule, msg := buildAlertRule(tenant, project, "延迟", "http.latency", "", "avg", "gt", &threshold, 300, "warning", nil)
+	rule, msg := buildAlertRule(tenant, project, "延迟", "http.latency", "", "avg", "gt", &threshold, 300, "warning", nil, nil)
 	if msg != "" || rule == nil || rule.Aggregation != "avg" || !rule.Enabled {
 		t.Fatalf("valid rule rejected: %v %v", rule, msg)
 	}
-	if _, msg := buildAlertRule(tenant, project, "延迟", "http.latency", "", "sum", "gt", &threshold, 300, "warning", nil); msg != "" {
+	if _, msg := buildAlertRule(tenant, project, "延迟", "http.latency", "", "sum", "gt", &threshold, 300, "warning", nil, nil); msg != "" {
 		// sum is valid as well
 		t.Fatalf("sum aggregation rejected: %s", msg)
 	}
-	if _, msg := buildAlertRule(tenant, project, "延迟", "http.latency", "", "avg", "gt", &threshold, 10, "warning", nil); msg == "" {
+	if _, msg := buildAlertRule(tenant, project, "延迟", "http.latency", "", "avg", "gt", &threshold, 10, "warning", nil, nil); msg == "" {
 		t.Fatal("expected short window to be rejected")
 	}
 }

@@ -53,6 +53,33 @@ func (a *API) listAlertRules(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"rules": rules})
 }
 
+func (a *API) parseChannelIDs(r *http.Request, tenantID primitive.ObjectID, raw []string) ([]primitive.ObjectID, string) {
+	if len(raw) > 10 {
+		return nil, "每条规则最多绑定 10 个通知渠道"
+	}
+	out := make([]primitive.ObjectID, 0, len(raw))
+	seen := map[primitive.ObjectID]bool{}
+	for _, value := range raw {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		id, err := primitive.ObjectIDFromHex(value)
+		if err != nil {
+			return nil, "通知渠道 ID 无效"
+		}
+		if seen[id] {
+			continue
+		}
+		if _, err := a.store.NotificationChannelByID(r.Context(), tenantID, id); err != nil {
+			return nil, "通知渠道不存在或不属于当前租户"
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out, ""
+}
+
 func (a *API) createAlertRule(w http.ResponseWriter, r *http.Request) {
 	t := currentTenant(r)
 	var body struct {
@@ -66,6 +93,7 @@ func (a *API) createAlertRule(w http.ResponseWriter, r *http.Request) {
 		Severity      string   `json:"severity"`
 		Enabled       *bool    `json:"enabled"`
 		ProjectID     string   `json:"projectId"`
+		ChannelIDs    []string `json:"channelIds"`
 	}
 	if err := httpx.DecodeJSON(w, r, &body, 16<<10); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "invalid_body", err.Error())
@@ -102,7 +130,12 @@ func (a *API) createAlertRule(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "project_required", "请选择一个项目")
 		return
 	}
-	rule, errMsg := buildAlertRule(t.ID, projectID, body.Name, body.Metric, body.Service, body.Aggregation, body.Operator, body.Threshold, body.WindowSeconds, body.Severity, body.Enabled)
+	channelIDs, channelMsg := a.parseChannelIDs(r, t.ID, body.ChannelIDs)
+	if channelMsg != "" {
+		httpx.Error(w, http.StatusBadRequest, "invalid_channels", channelMsg)
+		return
+	}
+	rule, errMsg := buildAlertRule(t.ID, projectID, body.Name, body.Metric, body.Service, body.Aggregation, body.Operator, body.Threshold, body.WindowSeconds, body.Severity, body.Enabled, channelIDs)
 	if errMsg != "" {
 		httpx.Error(w, http.StatusBadRequest, "invalid_rule", errMsg)
 		return
@@ -116,7 +149,7 @@ func (a *API) createAlertRule(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusCreated, rule)
 }
 
-func buildAlertRule(tenantID, projectID primitive.ObjectID, name, metric, service, aggregation, operator string, threshold *float64, window int, severity string, enabled *bool) (*model.AlertRule, string) {
+func buildAlertRule(tenantID, projectID primitive.ObjectID, name, metric, service, aggregation, operator string, threshold *float64, window int, severity string, enabled *bool, channelIDs []primitive.ObjectID) (*model.AlertRule, string) {
 	name = strings.TrimSpace(name)
 	metric = strings.TrimSpace(metric)
 	service = strings.TrimSpace(service)
@@ -164,7 +197,7 @@ func buildAlertRule(tenantID, projectID primitive.ObjectID, name, metric, servic
 	return &model.AlertRule{
 		TenantID: tenantID, ProjectID: projectID, Name: name, Metric: metric, Service: service,
 		Aggregation: aggregation, Operator: operator, Threshold: *threshold, WindowSeconds: window,
-		Severity: severity, Enabled: on, State: "pending", CreatedAt: now, UpdatedAt: now,
+		Severity: severity, ChannelIDs: channelIDs, Enabled: on, State: "pending", CreatedAt: now, UpdatedAt: now,
 	}, ""
 }
 
@@ -176,15 +209,16 @@ func (a *API) updateAlertRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name          *string  `json:"name"`
-		Metric        *string  `json:"metric"`
-		Service       *string  `json:"service"`
-		Aggregation   *string  `json:"aggregation"`
-		Operator      *string  `json:"operator"`
-		Threshold     *float64 `json:"threshold"`
-		WindowSeconds *int     `json:"windowSeconds"`
-		Severity      *string  `json:"severity"`
-		Enabled       *bool    `json:"enabled"`
+		Name          *string   `json:"name"`
+		Metric        *string   `json:"metric"`
+		Service       *string   `json:"service"`
+		Aggregation   *string   `json:"aggregation"`
+		Operator      *string   `json:"operator"`
+		Threshold     *float64  `json:"threshold"`
+		WindowSeconds *int      `json:"windowSeconds"`
+		Severity      *string   `json:"severity"`
+		Enabled       *bool     `json:"enabled"`
+		ChannelIDs    *[]string `json:"channelIds"`
 	}
 	if err := httpx.DecodeJSON(w, r, &body, 16<<10); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "invalid_body", err.Error())
@@ -248,10 +282,17 @@ func (a *API) updateAlertRule(w http.ResponseWriter, r *http.Request) {
 		}
 		set["severity"] = severity
 	}
+	if body.ChannelIDs != nil {
+		channelIDs, channelMsg := a.parseChannelIDs(r, t.ID, *body.ChannelIDs)
+		if channelMsg != "" {
+			httpx.Error(w, http.StatusBadRequest, "invalid_channels", channelMsg)
+			return
+		}
+		set["channelIds"] = channelIDs
+	}
 	if body.Enabled != nil {
 		set["enabled"] = *body.Enabled
 		if !*body.Enabled {
-			_ = a.store.ResolveAlerts(r.Context(), id, time.Now().UTC())
 			set["state"] = "ok"
 		}
 	}
@@ -269,6 +310,9 @@ func (a *API) updateAlertRule(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusInternalServerError, "internal_error", "无法更新告警规则")
 		return
 	}
+	if body.Enabled != nil && !*body.Enabled {
+		a.resolveRuleAlerts(r.Context(), *rule)
+	}
 	httpx.JSON(w, http.StatusOK, rule)
 }
 
@@ -279,7 +323,9 @@ func (a *API) deleteAlertRule(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "invalid_id", err.Error())
 		return
 	}
-	_ = a.store.ResolveAlerts(r.Context(), id, time.Now().UTC())
+	if rule, err := a.store.AlertRuleByID(r.Context(), t.ID, id); err == nil {
+		a.resolveRuleAlerts(r.Context(), *rule)
+	}
 	if err := a.store.DeleteAlertRule(r.Context(), t.ID, id); err != nil {
 		a.logError(r, "delete alert rule failed", err)
 		httpx.Error(w, http.StatusInternalServerError, "internal_error", "无法删除告警规则")

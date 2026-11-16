@@ -394,6 +394,78 @@ Content-Type: application/json
 - 触发后只保留一条 firing 记录；条件恢复、规则暂停或删除时自动 resolved
 - `GET /api/alerts?status=firing|resolved|all` 查询告警历史
 
+### 2.9 通知渠道
+
+在 **告警 → 通知渠道** 创建渠道，或在规则中通过 `channelIds` 绑定。
+
+Webhook：
+
+```http
+POST /api/notification-channels
+Content-Type: application/json
+
+{
+  "name": "值班 Webhook",
+  "type": "webhook",
+  "webhookUrl": "https://example.com/hooks/catch",
+  "secret": "optional-hmac-secret",
+  "enabled": true
+}
+```
+
+投递请求：
+
+```http
+POST <webhookUrl>
+Content-Type: application/json
+User-Agent: Catch-Alert/1.0
+X-Catch-Event: firing   # firing / resolved / test
+X-Catch-Delivery: <deliveryId>
+X-Catch-Signature: sha256=<HMAC-SHA256(secret, rawBody)>
+```
+
+```json
+{
+  "version": 1,
+  "event": "firing",
+  "alert": { "ruleName": "API 延迟过高", "severity": "critical", "value": 620, "threshold": 500, "message": "…" },
+  "rule": { "id": "…", "metric": "http.server.duration", "aggregation": "max", "windowSeconds": 300 },
+  "tenant": { "id": "…", "slug": "acme", "name": "Acme Inc." },
+  "project": { "id": "…", "slug": "orders", "name": "Orders API" },
+  "dashboardUrl": "https://catch.example.com/alerts"
+}
+```
+
+邮件渠道：
+
+```json
+{
+  "name": "值班邮件",
+  "type": "email",
+  "recipients": ["oncall@example.com"],
+  "enabled": true
+}
+```
+
+服务端 SMTP 配置：
+
+```env
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM=Catch <catch@example.com>
+SMTP_TLS_MODE=starttls   # starttls / tls / none
+```
+
+投递机制：
+
+- 告警 firing 和恢复 resolved 都会创建投递记录
+- 异步 worker 每 `NOTIFY_INTERVAL_SECONDS`（默认 5 秒）轮询
+- 失败指数退避，最多 `NOTIFY_MAX_ATTEMPTS`（默认 5）次
+- `GET /api/notification-deliveries?status=pending|sent|failed&limit=50` 查看状态与错误
+- 删除渠道会自动从所有规则中解除绑定
+
 ## 3. 服务端集成示例
 
 ### 3.1 Go：简单 reporter

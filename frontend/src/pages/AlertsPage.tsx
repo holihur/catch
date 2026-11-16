@@ -5,14 +5,17 @@ import {
   BellRing,
   CheckCircle2,
   Loader2,
+  Mail,
   Pencil,
   Plus,
+  Send,
   Trash2,
+  Webhook,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { api } from "@/lib/api"
-import type { AlertItem, AlertRule } from "@/lib/types"
+import type { AlertItem, AlertRule, NotificationChannel, NotificationDelivery } from "@/lib/types"
 import { useAuth } from "@/context/AuthContext"
 import { useProjects } from "@/context/ProjectContext"
 import { cn, formatNumber, relativeTime } from "@/lib/utils"
@@ -66,19 +69,25 @@ export function AlertsPage() {
   const [error, setError] = React.useState<unknown>(null)
   const [editing, setEditing] = React.useState<AlertRule | "new" | null>(null)
   const [metricNames, setMetricNames] = React.useState<string[]>([])
+  const [channels, setChannels] = React.useState<NotificationChannel[]>([])
+  const [smtpConfigured, setSmtpConfigured] = React.useState(false)
+  const [channelsOpen, setChannelsOpen] = React.useState(false)
   const projectId = selected?.id
 
   const load = React.useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [ruleRes, alertRes] = await Promise.all([
+      const [ruleRes, alertRes, channelRes] = await Promise.all([
         api.alertRules(projectId),
         api.alerts({ projectId, status }),
+        api.notificationChannels(),
       ])
       setRules(ruleRes.rules ?? [])
       setAlerts(alertRes.alerts ?? [])
       setFiringTotal(alertRes.firing ?? 0)
+      setChannels(channelRes.channels ?? [])
+      setSmtpConfigured(channelRes.smtpConfigured)
     } catch (err) {
       setError(err)
     } finally {
@@ -139,9 +148,14 @@ export function AlertsPage() {
         description="基于 OTLP 指标持续评估阈值，异常时创建 firing 告警，恢复后自动标记 resolved。"
         actions={
           canManage ? (
-            <Button size="sm" disabled={!projectId} onClick={() => setEditing("new")}>
-              <Plus className="size-4" /> 新建规则
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setChannelsOpen(true)}>
+                <Send className="size-4" /> 通知渠道
+              </Button>
+              <Button size="sm" disabled={!projectId} onClick={() => setEditing("new")}>
+                <Plus className="size-4" /> 新建规则
+              </Button>
+            </div>
           ) : null
         }
       />
@@ -307,6 +321,7 @@ export function AlertsPage() {
                         </span>
                         <span>窗口 {windowLabel(rule.windowSeconds)}</span>
                         {rule.service ? <span>服务 {rule.service}</span> : <span>全部服务</span>}
+                        <span>通知 {ruleChannelLabel(rule, channels)}</span>
                         <span>
                           当前 {rule.hasData ? formatNumber(rule.value) : "—"}
                           {rule.lastEvaluated ? ` · ${relativeTime(rule.lastEvaluated)}评估` : ""}
@@ -343,6 +358,7 @@ export function AlertsPage() {
           rule={editing === "new" ? null : editing}
           projectId={projectId}
           metricNames={metricNames}
+          channels={channels}
           onClose={() => setEditing(null)}
           onSaved={async () => {
             setEditing(null)
@@ -350,20 +366,36 @@ export function AlertsPage() {
           }}
         />
       ) : null}
+
+      {channelsOpen ? (
+        <NotificationChannelsDialog
+          channels={channels}
+          smtpConfigured={smtpConfigured}
+          onClose={() => setChannelsOpen(false)}
+          onChanged={load}
+        />
+      ) : null}
     </div>
   )
+}
+
+function ruleChannelLabel(rule: AlertRule, channels: NotificationChannel[]): string {
+  const selected = channels.filter((channel) => rule.channelIds?.includes(channel.id))
+  return selected.length ? selected.map((channel) => channel.name).join("、") : "未绑定"
 }
 
 function RuleDialog({
   rule,
   projectId,
   metricNames,
+  channels,
   onClose,
   onSaved,
 }: {
   rule: AlertRule | null
   projectId?: string
   metricNames: string[]
+  channels: NotificationChannel[]
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
@@ -376,6 +408,7 @@ function RuleDialog({
   const [windowSeconds, setWindowSeconds] = React.useState(String(rule?.windowSeconds ?? 300))
   const [severity, setSeverity] = React.useState(rule?.severity ?? "warning")
   const [enabled, setEnabled] = React.useState(rule?.enabled ?? true)
+  const [channelIds, setChannelIds] = React.useState<string[]>(rule?.channelIds ?? [])
   const [busy, setBusy] = React.useState(false)
 
   const save = async (e: React.FormEvent) => {
@@ -401,6 +434,7 @@ function RuleDialog({
         windowSeconds: Number(windowSeconds),
         severity,
         enabled,
+        channelIds,
       }
       if (rule) {
         await api.updateAlertRule(rule.id, body)
@@ -530,6 +564,41 @@ function RuleDialog({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label>通知渠道</Label>
+            {channels.length === 0 ? (
+              <p className="text-muted-foreground text-[11px]">
+                还没有通知渠道。先在「通知渠道」中创建 Webhook 或邮件渠道，再回到这里绑定。
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {channels.map((channel) => (
+                  <label
+                    key={channel.id}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors",
+                      channelIds.includes(channel.id) ? "bg-primary/10 text-primary" : "bg-muted/40 text-muted-foreground",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-primary size-3"
+                      checked={channelIds.includes(channel.id)}
+                      onChange={(e) =>
+                        setChannelIds((prev) =>
+                          e.target.checked ? [...prev, channel.id] : prev.filter((id) => id !== channel.id),
+                        )
+                      }
+                    />
+                    {channel.type === "email" ? <Mail className="size-3" /> : <Webhook className="size-3" />}
+                    {channel.name}
+                    {!channel.enabled ? <span>（已暂停）</span> : null}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="w-40 space-y-2">
               <Label>级别</Label>
@@ -559,5 +628,364 @@ function RuleDialog({
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function NotificationChannelsDialog({
+  channels,
+  smtpConfigured,
+  onClose,
+  onChanged,
+}: {
+  channels: NotificationChannel[]
+  smtpConfigured: boolean
+  onClose: () => void
+  onChanged: () => Promise<void>
+}) {
+  const [editing, setEditing] = React.useState<NotificationChannel | "new" | null>(null)
+  const [deliveries, setDeliveries] = React.useState<NotificationDelivery[]>([])
+  const [loading, setLoading] = React.useState(true)
+
+  const loadDeliveries = React.useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await api.notificationDeliveries({ limit: 20 })
+      setDeliveries(res.deliveries ?? [])
+    } catch {
+      setDeliveries([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    void loadDeliveries()
+  }, [loadDeliveries])
+
+  const toggle = async (channel: NotificationChannel, enabled: boolean) => {
+    try {
+      await api.updateNotificationChannel(channel.id, { enabled })
+      await onChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "更新失败")
+    }
+  }
+
+  const remove = async (channel: NotificationChannel) => {
+    if (!window.confirm(`删除通知渠道「${channel.name}」？已绑定该渠道的告警规则会自动解除绑定。`)) return
+    try {
+      await api.deleteNotificationChannel(channel.id)
+      toast.success("通知渠道已删除")
+      await onChanged()
+      await loadDeliveries()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "删除失败")
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        {editing ? (
+          <ChannelForm
+            key={editing === "new" ? "new" : editing.id}
+            channel={editing === "new" ? null : editing}
+            smtpConfigured={smtpConfigured}
+            onCancel={() => setEditing(null)}
+            onSaved={async () => {
+              setEditing(null)
+              await onChanged()
+              await loadDeliveries()
+            }}
+          />
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Send className="size-4" /> 通知渠道
+              </DialogTitle>
+              <DialogDescription>
+                告警触发和恢复时，Catch 会异步投递通知；失败自动重试。Webhook 支持 HMAC-SHA256 签名。
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-muted-foreground text-xs">
+                租户级渠道，可在告警规则中多选绑定。{!smtpConfigured ? "当前未配置 SMTP，邮件渠道会投递失败。" : null}
+              </p>
+              <Button size="sm" className="self-start sm:self-auto" onClick={() => setEditing("new")}>
+                <Plus className="size-4" /> 新建渠道
+              </Button>
+            </div>
+
+            {channels.length === 0 ? (
+              <div className="bg-muted/30 text-muted-foreground rounded-xl px-4 py-8 text-center text-sm">
+                还没有通知渠道。创建 Webhook 或邮件渠道后，在规则中绑定即可。
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {channels.map((channel) => (
+                  <Card key={channel.id} className="gap-0">
+                    <CardContent className="space-y-3 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="flex items-center gap-1.5 text-sm font-medium">
+                            {channel.type === "email" ? <Mail className="size-3.5" /> : <Webhook className="size-3.5" />}
+                            {channel.name}
+                            <Badge variant="outline" className="text-[10px] uppercase">
+                              {channel.type}
+                            </Badge>
+                          </p>
+                          <p className="text-muted-foreground mt-1 truncate font-mono text-[11px]">
+                            {channel.type === "email"
+                              ? (channel.recipients ?? []).join(", ")
+                              : channel.webhookUrl}
+                          </p>
+                          {channel.type === "webhook" && channel.secretSet ? (
+                            <p className="text-muted-foreground mt-1 text-[10px]">已配置签名密钥</p>
+                          ) : null}
+                        </div>
+                        <Switch
+                          checked={channel.enabled}
+                          onCheckedChange={(checked) => void toggle(channel, checked)}
+                          aria-label="启用通知渠道"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(channel)}>
+                          <Pencil className="size-3.5" /> 编辑
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => void remove(channel)}
+                        >
+                          <Trash2 className="size-3.5" /> 删除
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            <section className="space-y-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold">最近投递</h3>
+                <span className="text-muted-foreground text-xs">{deliveries.length} 条</span>
+              </div>
+              {loading ? (
+                <Skeleton className="h-20 rounded-lg" />
+              ) : deliveries.length === 0 ? (
+                <p className="text-muted-foreground text-xs">还没有通知投递记录。</p>
+              ) : (
+                <div className="scrollbar-thin max-h-52 space-y-1.5 overflow-auto">
+                  {deliveries.map((delivery) => (
+                    <div
+                      key={delivery.id}
+                      className="bg-muted/25 flex flex-col gap-1 rounded-lg px-2.5 py-2 text-[11px] sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={cn(
+                            "size-1.5 shrink-0 rounded-full",
+                            delivery.status === "sent"
+                              ? "bg-emerald-500"
+                              : delivery.status === "failed"
+                                ? "bg-red-500"
+                                : "bg-amber-500",
+                          )}
+                        />
+                        <span className="truncate">
+                          {delivery.channelName} · {delivery.event} · 尝试 {delivery.attempts} 次
+                        </span>
+                        {delivery.error ? (
+                          <span className="text-destructive truncate" title={delivery.error}>
+                            {delivery.error}
+                          </span>
+                        ) : null}
+                      </div>
+                      <span className="text-muted-foreground shrink-0">{relativeTime(delivery.createdAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ChannelForm({
+  channel,
+  smtpConfigured,
+  onCancel,
+  onSaved,
+}: {
+  channel: NotificationChannel | null
+  smtpConfigured: boolean
+  onCancel: () => void
+  onSaved: () => Promise<void>
+}) {
+  const [name, setName] = React.useState(channel?.name ?? "")
+  const [type, setType] = React.useState<"webhook" | "email">(channel?.type ?? "webhook")
+  const [enabled, setEnabled] = React.useState(channel?.enabled ?? true)
+  const [webhookUrl, setWebhookUrl] = React.useState(channel?.webhookUrl ?? "")
+  const [secret, setSecret] = React.useState("")
+  const [recipients, setRecipients] = React.useState((channel?.recipients ?? []).join(", "))
+  const [busy, setBusy] = React.useState(false)
+  const [testing, setTesting] = React.useState(false)
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) {
+      toast.error("请填写渠道名称")
+      return
+    }
+    setBusy(true)
+    try {
+      const body = {
+        name: name.trim(),
+        type,
+        enabled,
+        webhookUrl: type === "webhook" ? webhookUrl.trim() : "",
+        recipients:
+          type === "email"
+            ? recipients
+                .split(/[,\n]/)
+                .map((item) => item.trim())
+                .filter(Boolean)
+            : [],
+        ...(secret.trim() ? { secret } : {}),
+      }
+      if (channel) {
+        await api.updateNotificationChannel(channel.id, body)
+        toast.success("通知渠道已更新")
+      } else {
+        await api.createNotificationChannel(body)
+        toast.success("通知渠道已创建")
+      }
+      await onSaved()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "保存失败")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const test = async () => {
+    if (!channel) return
+    setTesting(true)
+    try {
+      const res = await api.testNotificationChannel(channel.id)
+      toast.success(`测试通知已发送${res.statusCode ? ` (${res.statusCode})` : ""}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "测试投递失败")
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="space-y-4">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          {type === "email" ? <Mail className="size-4" /> : <Webhook className="size-4" />}
+          {channel ? "编辑通知渠道" : "新建通知渠道"}
+        </DialogTitle>
+        <DialogDescription>
+          {type === "email"
+            ? "告警触发/恢复时发送纯文本邮件。"
+            : "以 JSON POST 推送告警，可通过签名头校验来源。"}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="channel-name">名称</Label>
+          <Input
+            id="channel-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="例如：值班 Webhook"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>类型</Label>
+          <Select value={type} onValueChange={(value) => setType(value as "webhook" | "email")}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="webhook">Webhook</SelectItem>
+              <SelectItem value="email">邮件</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {type === "webhook" ? (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="channel-webhook">Webhook URL</Label>
+            <Input
+              id="channel-webhook"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              placeholder="https://example.com/hooks/catch"
+              className="font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="channel-secret">签名密钥（可选）</Label>
+            <Input
+              id="channel-secret"
+              type="password"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder={channel?.secretSet ? "留空不修改；输入新值会覆盖" : "用于 X-Catch-Signature HMAC-SHA256"}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor="channel-recipients">收件人</Label>
+          <Input
+            id="channel-recipients"
+            value={recipients}
+            onChange={(e) => setRecipients(e.target.value)}
+            placeholder="oncall@example.com, ops@example.com"
+          />
+          {!smtpConfigured ? (
+            <p className="text-amber-600 text-[11px] dark:text-amber-400">
+              服务端未配置 SMTP，保存后测试或真实投递会失败。请设置 SMTP_HOST / SMTP_PORT / SMTP_FROM。
+            </p>
+          ) : null}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="flex items-center gap-2 text-sm">
+          <Switch checked={enabled} onCheckedChange={setEnabled} /> 启用
+        </label>
+        {channel ? (
+          <Button type="button" variant="outline" size="sm" onClick={() => void test()} disabled={testing || busy}>
+            {testing ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />} 发送测试通知
+          </Button>
+        ) : null}
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>
+          取消
+        </Button>
+        <Button type="submit" disabled={busy}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : null} 保存
+        </Button>
+      </DialogFooter>
+    </form>
   )
 }

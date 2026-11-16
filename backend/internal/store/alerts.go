@@ -34,6 +34,14 @@ func (s *Store) ListAlertRules(ctx context.Context, tenantID, projectID primitiv
 	return out, nil
 }
 
+func (s *Store) AlertRuleByID(ctx context.Context, tenantID, id primitive.ObjectID) (*model.AlertRule, error) {
+	var rule model.AlertRule
+	if err := s.AlertRules.FindOne(ctx, bson.M{"_id": id, "tenantId": tenantID}).Decode(&rule); err != nil {
+		return nil, err
+	}
+	return &rule, nil
+}
+
 func (s *Store) CreateAlertRule(ctx context.Context, rule *model.AlertRule) error {
 	res, err := s.AlertRules.InsertOne(ctx, rule)
 	if err != nil {

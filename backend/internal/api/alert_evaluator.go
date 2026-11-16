@@ -57,7 +57,7 @@ func (a *API) evaluateAlertRule(ctx context.Context, rule model.AlertRule) {
 	}
 	if !hasData {
 		if rule.State == "firing" {
-			_ = a.store.ResolveAlerts(ctx, rule.ID, now)
+			a.resolveRuleAlerts(ctx, rule)
 		}
 		_ = a.store.SetAlertRuleResult(ctx, rule.ID, "nodata", 0, false, nil, now)
 		return
@@ -79,12 +79,13 @@ func (a *API) evaluateAlertRule(ctx context.Context, rule model.AlertRule) {
 			return
 		}
 		_ = a.store.SetAlertRuleResult(ctx, rule.ID, "firing", value, true, &now, now)
+		a.enqueueAlertNotifications(ctx, rule, *alert, "firing")
 		a.logger.Slog.WarnContext(ctx, "alert firing", "ruleId", rule.ID.Hex(), "rule", rule.Name, "metric", rule.Metric, "value", value)
 	case firing:
 		_ = a.store.TouchFiringAlert(ctx, rule.ID, value, message, now)
 		_ = a.store.SetAlertRuleResult(ctx, rule.ID, "firing", value, true, rule.FiredAt, now)
 	case !firing && rule.State == "firing":
-		_ = a.store.ResolveAlerts(ctx, rule.ID, now)
+		a.resolveRuleAlerts(ctx, rule)
 		_ = a.store.SetAlertRuleResult(ctx, rule.ID, "ok", value, true, nil, now)
 		a.logger.Slog.InfoContext(ctx, "alert resolved", "ruleId", rule.ID.Hex(), "rule", rule.Name, "value", value)
 	default:

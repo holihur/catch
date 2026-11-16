@@ -429,6 +429,7 @@ export interface AlertRule {
   threshold: number
   windowSeconds: number
   severity: "warning" | "critical"
+  channelIds?: string[]
   enabled: boolean
   state: "pending" | "ok" | "firing" | "nodata" | string
   value: number
@@ -465,4 +466,46 @@ export interface AlertRulesResponse {
 export interface AlertsResponse {
   alerts: AlertItem[]
   firing: number
+}
+
+export interface NotificationChannel {
+  id: string
+  tenantId: string
+  name: string
+  type: "webhook" | "email"
+  enabled: boolean
+  webhookUrl?: string
+  recipients?: string[]
+  secretSet: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificationChannelsResponse {
+  channels: NotificationChannel[]
+  smtpConfigured: boolean
+}
+
+export interface NotificationDelivery {
+  id: string
+  tenantId: string
+  projectId: string
+  alertId: string
+  ruleId: string
+  channelId: string
+  channelName: string
+  channelType: "webhook" | "email"
+  event: "firing" | "resolved" | "test" | string
+  status: "pending" | "sent" | "failed"
+  attempts: number
+  statusCode?: number
+  error?: string
+  nextAttemptAt: string
+  sentAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificationDeliveriesResponse {
+  deliveries: NotificationDelivery[]
 }

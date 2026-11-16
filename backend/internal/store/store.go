@@ -28,6 +28,8 @@ type Store struct {
 	Metrics    *mongo.Collection
 	AlertRules *mongo.Collection
 	Alerts     *mongo.Collection
+	Channels   *mongo.Collection
+	Deliveries *mongo.Collection
 }
 
 // Connect opens a MongoDB connection and ensures indexes exist.
@@ -63,6 +65,8 @@ func Connect(ctx context.Context, uri, dbName string, retention time.Duration) (
 		Metrics:    db.Collection("metrics"),
 		AlertRules: db.Collection("alert_rules"),
 		Alerts:     db.Collection("alerts"),
+		Channels:   db.Collection("notification_channels"),
+		Deliveries: db.Collection("notification_deliveries"),
 	}
 	if err := s.ensureIndexes(ctx, retention); err != nil {
 		return nil, err
@@ -122,6 +126,10 @@ func (s *Store) ensureIndexes(ctx context.Context, retention time.Duration) erro
 		{"alert_rules", bson.D{{Key: "enabled", Value: 1}}, idx("alert_rules_enabled")},
 		{"alerts", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "state", Value: 1}, {Key: "startedAt", Value: -1}}, idx("alerts_project_state_time")},
 		{"alerts", bson.D{{Key: "ruleId", Value: 1}, {Key: "state", Value: 1}}, idx("alerts_rule_state")},
+		{"notification_channels", bson.D{{Key: "tenantId", Value: 1}, {Key: "createdAt", Value: -1}}, idx("channels_tenant")},
+		{"notification_deliveries", bson.D{{Key: "alertId", Value: 1}, {Key: "channelId", Value: 1}, {Key: "event", Value: 1}}, idx("uniq_delivery").SetUnique(true)},
+		{"notification_deliveries", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "createdAt", Value: -1}}, idx("deliveries_project")},
+		{"notification_deliveries", bson.D{{Key: "status", Value: 1}, {Key: "nextAttemptAt", Value: 1}}, idx("deliveries_due")},
 	}
 	for _, sp := range specs {
 		coll := s.DB.Collection(sp.coll)
@@ -144,6 +152,9 @@ func (s *Store) ensureIndexes(ctx context.Context, retention time.Duration) erro
 			return err
 		}
 		if err := s.ensureTTL(ctx, s.Alerts, "alerts", "resolvedAt", "ttl_alert", retention); err != nil {
+			return err
+		}
+		if err := s.ensureTTL(ctx, s.Deliveries, "notification_deliveries", "createdAt", "ttl_delivery", retention); err != nil {
 			return err
 		}
 	}

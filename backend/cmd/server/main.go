@@ -61,6 +61,7 @@ func run() error {
 	alertCtx, stopAlerts := context.WithCancel(context.Background())
 	defer stopAlerts()
 	a.StartAlertEvaluator(alertCtx)
+	a.StartNotificationWorker(alertCtx)
 
 	var grpcServer *grpc.Server
 	if cfg.GRPCPort != "" && cfg.GRPCPort != "0" {

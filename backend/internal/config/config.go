@@ -10,25 +10,27 @@ import (
 
 // Config holds all runtime configuration for the Catch API.
 type Config struct {
-	Env           string
-	Port          string
-	GRPCPort      string
-	PublicURL     string // URL of the API (used for OIDC redirect URIs)
-	AppURL        string // URL of the web app (used after login)
-	MongoURI      string
-	MongoDB       string
-	StaticDir     string
-	AllowDev      bool
-	SeedDemo      bool
-	LogLevel      string
-	SessionTTL    time.Duration
-	CookieName    string
-	CookieSecure  bool
-	AppSecret     string
-	Retention     time.Duration
-	RateLimit     int // max ingest events per minute per project
-	AlertInterval time.Duration
-	CORSOrigins   []string
+	Env            string
+	Port           string
+	GRPCPort       string
+	PublicURL      string // URL of the API (used for OIDC redirect URIs)
+	AppURL         string // URL of the web app (used after login)
+	MongoURI       string
+	MongoDB        string
+	StaticDir      string
+	AllowDev       bool
+	SeedDemo       bool
+	LogLevel       string
+	SessionTTL     time.Duration
+	CookieName     string
+	CookieSecure   bool
+	AppSecret      string
+	Retention      time.Duration
+	RateLimit      int // max ingest events per minute per project
+	AlertInterval  time.Duration
+	NotifyInterval time.Duration
+	NotifyAttempts int
+	CORSOrigins    []string
 
 	// Optional bootstrap OIDC config. When set, the tenant is upserted on boot.
 	OIDCTenantSlug     string
@@ -41,6 +43,13 @@ type Config struct {
 	GRPCTLSKey        string
 	GRPCTLSClientCA   string
 	GRPCAllowInsecure bool
+
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
+	SMTPTLSMode  string
 }
 
 // staticDir auto-detects the built frontend so `go run ./cmd/server` and the
@@ -125,6 +134,8 @@ func Load() (Config, error) {
 		Retention:          time.Duration(envInt("RETENTION_DAYS", 30)) * 24 * time.Hour,
 		RateLimit:          envInt("INGEST_RATE_LIMIT", 1200),
 		AlertInterval:      time.Duration(envInt("ALERT_INTERVAL_SECONDS", 30)) * time.Second,
+		NotifyInterval:     time.Duration(envInt("NOTIFY_INTERVAL_SECONDS", 5)) * time.Second,
+		NotifyAttempts:     envInt("NOTIFY_MAX_ATTEMPTS", 5),
 		CORSOrigins:        envList("CORS_ORIGINS"),
 		OIDCTenantSlug:     env("OIDC_TENANT_SLUG", ""),
 		OIDCIssuer:         env("OIDC_ISSUER", ""),
@@ -134,6 +145,12 @@ func Load() (Config, error) {
 		GRPCTLSCert:        env("GRPC_TLS_CERT", ""),
 		GRPCTLSKey:         env("GRPC_TLS_KEY", ""),
 		GRPCTLSClientCA:    env("GRPC_TLS_CLIENT_CA", ""),
+		SMTPHost:           env("SMTP_HOST", ""),
+		SMTPPort:           env("SMTP_PORT", "587"),
+		SMTPUsername:       env("SMTP_USERNAME", ""),
+		SMTPPassword:       env("SMTP_PASSWORD", ""),
+		SMTPFrom:           env("SMTP_FROM", ""),
+		SMTPTLSMode:        strings.ToLower(env("SMTP_TLS_MODE", "starttls")),
 	}
 	cfg.GRPCAllowInsecure = envBool("GRPC_ALLOW_INSECURE", cfg.Env != "production")
 
@@ -145,6 +162,20 @@ func Load() (Config, error) {
 	}
 	if cfg.AlertInterval < 5*time.Second {
 		cfg.AlertInterval = 30 * time.Second
+	}
+	if cfg.NotifyInterval < 2*time.Second {
+		cfg.NotifyInterval = 5 * time.Second
+	}
+	if cfg.NotifyAttempts < 1 || cfg.NotifyAttempts > 20 {
+		cfg.NotifyAttempts = 5
+	}
+	switch cfg.SMTPTLSMode {
+	case "starttls", "tls", "none":
+	default:
+		cfg.SMTPTLSMode = "starttls"
+	}
+	if cfg.SMTPFrom == "" {
+		cfg.SMTPFrom = cfg.SMTPUsername
 	}
 	switch cfg.LogLevel {
 	case "debug", "info", "warn", "error":
