@@ -371,6 +371,10 @@ func ConvertMetrics(req *collectormetricsv1.ExportMetricsServiceRequest, project
 						p.Value = average(p.Sum, p.Count)
 						p.Min = dp.Min
 						p.Max = dp.Max
+						p.Distribution = &model.MetricDistribution{
+							BucketCounts:   append([]uint64(nil), dp.GetBucketCounts()...),
+							ExplicitBounds: append([]float64(nil), dp.GetExplicitBounds()...),
+						}
 						p.Attributes = stringAttributes(dp.GetAttributes())
 						out = append(out, p)
 					}
@@ -388,6 +392,14 @@ func ConvertMetrics(req *collectormetricsv1.ExportMetricsServiceRequest, project
 						p.Value = average(p.Sum, p.Count)
 						p.Min = dp.Min
 						p.Max = dp.Max
+						p.Distribution = &model.MetricDistribution{
+							ZeroCount:       dp.GetZeroCount(),
+							Scale:           dp.GetScale(),
+							PositiveOffset:  dp.GetPositive().GetOffset(),
+							PositiveBuckets: append([]uint64(nil), dp.GetPositive().GetBucketCounts()...),
+							NegativeOffset:  dp.GetNegative().GetOffset(),
+							NegativeBuckets: append([]uint64(nil), dp.GetNegative().GetBucketCounts()...),
+						}
 						p.Attributes = stringAttributes(dp.GetAttributes())
 						out = append(out, p)
 					}
@@ -400,6 +412,9 @@ func ConvertMetrics(req *collectormetricsv1.ExportMetricsServiceRequest, project
 						p.Count = dp.GetCount()
 						p.Sum = dp.GetSum()
 						p.Value = average(p.Sum, p.Count)
+						for _, q := range dp.GetQuantileValues() {
+							p.Quantiles = append(p.Quantiles, model.MetricQuantile{Quantile: q.GetQuantile(), Value: q.GetValue()})
+						}
 						p.Attributes = stringAttributes(dp.GetAttributes())
 						out = append(out, p)
 					}

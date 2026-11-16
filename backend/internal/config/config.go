@@ -10,24 +10,25 @@ import (
 
 // Config holds all runtime configuration for the Catch API.
 type Config struct {
-	Env          string
-	Port         string
-	GRPCPort     string
-	PublicURL    string // URL of the API (used for OIDC redirect URIs)
-	AppURL       string // URL of the web app (used after login)
-	MongoURI     string
-	MongoDB      string
-	StaticDir    string
-	AllowDev     bool
-	SeedDemo     bool
-	LogLevel     string
-	SessionTTL   time.Duration
-	CookieName   string
-	CookieSecure bool
-	AppSecret    string
-	Retention    time.Duration
-	RateLimit    int // max ingest events per minute per project
-	CORSOrigins  []string
+	Env           string
+	Port          string
+	GRPCPort      string
+	PublicURL     string // URL of the API (used for OIDC redirect URIs)
+	AppURL        string // URL of the web app (used after login)
+	MongoURI      string
+	MongoDB       string
+	StaticDir     string
+	AllowDev      bool
+	SeedDemo      bool
+	LogLevel      string
+	SessionTTL    time.Duration
+	CookieName    string
+	CookieSecure  bool
+	AppSecret     string
+	Retention     time.Duration
+	RateLimit     int // max ingest events per minute per project
+	AlertInterval time.Duration
+	CORSOrigins   []string
 
 	// Optional bootstrap OIDC config. When set, the tenant is upserted on boot.
 	OIDCTenantSlug     string
@@ -36,8 +37,10 @@ type Config struct {
 	OIDCClientSecret   string
 	OIDCAllowedDomains []string
 
-	GRPCTLSCert string
-	GRPCTLSKey  string
+	GRPCTLSCert       string
+	GRPCTLSKey        string
+	GRPCTLSClientCA   string
+	GRPCAllowInsecure bool
 }
 
 // staticDir auto-detects the built frontend so `go run ./cmd/server` and the
@@ -121,6 +124,7 @@ func Load() (Config, error) {
 		AppSecret:          env("APP_SECRET", "catch-development-secret-change-me"),
 		Retention:          time.Duration(envInt("RETENTION_DAYS", 30)) * 24 * time.Hour,
 		RateLimit:          envInt("INGEST_RATE_LIMIT", 1200),
+		AlertInterval:      time.Duration(envInt("ALERT_INTERVAL_SECONDS", 30)) * time.Second,
 		CORSOrigins:        envList("CORS_ORIGINS"),
 		OIDCTenantSlug:     env("OIDC_TENANT_SLUG", ""),
 		OIDCIssuer:         env("OIDC_ISSUER", ""),
@@ -129,13 +133,18 @@ func Load() (Config, error) {
 		OIDCAllowedDomains: envList("OIDC_ALLOWED_DOMAINS"),
 		GRPCTLSCert:        env("GRPC_TLS_CERT", ""),
 		GRPCTLSKey:         env("GRPC_TLS_KEY", ""),
+		GRPCTLSClientCA:    env("GRPC_TLS_CLIENT_CA", ""),
 	}
+	cfg.GRPCAllowInsecure = envBool("GRPC_ALLOW_INSECURE", cfg.Env != "production")
 
 	if cfg.CORSOrigins == nil {
 		cfg.CORSOrigins = []string{cfg.AppURL, cfg.PublicURL}
 	}
 	if cfg.SessionTTL <= 0 {
 		return cfg, fmt.Errorf("SESSION_TTL_HOURS must be positive")
+	}
+	if cfg.AlertInterval < 5*time.Second {
+		cfg.AlertInterval = 30 * time.Second
 	}
 	switch cfg.LogLevel {
 	case "debug", "info", "warn", "error":

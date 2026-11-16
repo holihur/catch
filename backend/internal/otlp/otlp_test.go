@@ -251,14 +251,19 @@ func TestConvertMetrics(t *testing.T) {
 					}}}}},
 					{Name: "latency", Unit: "ms", Data: &metricv1.Metric_Histogram{Histogram: &metricv1.Histogram{AggregationTemporality: metricv1.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA, DataPoints: []*metricv1.HistogramDataPoint{{
 						TimeUnixNano: now, Count: 2, Sum: proto.Float64(100),
+						ExplicitBounds: []float64{50}, BucketCounts: []uint64{1, 1},
+					}}}}},
+					{Name: "rpc.duration", Unit: "ms", Data: &metricv1.Metric_Summary{Summary: &metricv1.Summary{DataPoints: []*metricv1.SummaryDataPoint{{
+						TimeUnixNano: now, Count: 2, Sum: 30,
+						QuantileValues: []*metricv1.SummaryDataPoint_ValueAtQuantile{{Quantile: 0.5, Value: 10}, {Quantile: 0.95, Value: 20}},
 					}}}}},
 				},
 			}},
 		}},
 	}
 	points := ConvertMetrics(req, project, time.Now())
-	if len(points) != 3 {
-		t.Fatalf("expected 3 metric points, got %d", len(points))
+	if len(points) != 4 {
+		t.Fatalf("expected 4 metric points, got %d", len(points))
 	}
 	if points[0].Name != "cpu.usage" || points[0].Value != 42.5 || points[0].Type != "gauge" || points[0].Attributes["host"] != "a" {
 		t.Fatalf("unexpected gauge: %+v", points[0])
@@ -268,5 +273,11 @@ func TestConvertMetrics(t *testing.T) {
 	}
 	if points[2].Value != 50 || points[2].Count != 2 || points[2].Type != "histogram" {
 		t.Fatalf("unexpected histogram: %+v", points[2])
+	}
+	if points[2].Distribution == nil || len(points[2].Distribution.BucketCounts) != 2 || points[2].Distribution.ExplicitBounds[0] != 50 {
+		t.Fatalf("unexpected histogram distribution: %+v", points[2].Distribution)
+	}
+	if points[3].Type != "summary" || len(points[3].Quantiles) != 2 || points[3].Quantiles[1].Value != 20 {
+		t.Fatalf("unexpected summary quantiles: %+v", points[3])
 	}
 }

@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"time"
 
@@ -36,6 +38,7 @@ func (a *API) processOTLPLogs(ctx context.Context, tenant model.Tenant, project 
 func (a *API) processOTLPTraces(ctx context.Context, tenant model.Tenant, project model.Project, req *collectortracev1.ExportTraceServiceRequest) (int64, error) {
 	now := time.Now().UTC()
 	spans := otlp.ConvertSpans(req, project, now)
+	spans = sampleSpans(spans, project)
 	events := otlp.ConvertTraces(req, project, now)
 
 	rejected := int64(0)
@@ -86,6 +89,47 @@ func (a *API) processOTLPMetrics(ctx context.Context, project model.Project, req
 		return rejected, err
 	}
 	return rejected, nil
+}
+
+// sampleSpans keeps all spans for error traces (when configured) and applies
+// deterministic trace-id sampling to the rest. Sampling is stable across
+// batches, so a trace is never partially stored because of sampling.
+func sampleSpans(spans []model.Span, project model.Project) []model.Span {
+	rate := project.TraceSampleRate
+	if rate >= 1 {
+		return spans
+	}
+	errorTraces := make(map[string]bool)
+	for i := range spans {
+		if spans[i].Status == "error" || hasException(spans[i]) {
+			errorTraces[spans[i].TraceID] = true
+		}
+	}
+	out := make([]model.Span, 0, len(spans))
+	for _, span := range spans {
+		if project.TraceErrorAlwaysSample && errorTraces[span.TraceID] {
+			out = append(out, span)
+			continue
+		}
+		if rate > 0 && traceHash(span.TraceID) < rate {
+			out = append(out, span)
+		}
+	}
+	return out
+}
+
+func hasException(span model.Span) bool {
+	for _, event := range span.Events {
+		if event.Name == "exception" {
+			return true
+		}
+	}
+	return false
+}
+
+func traceHash(traceID string) float64 {
+	sum := sha256.Sum256([]byte(traceID))
+	return float64(binary.BigEndian.Uint64(sum[:8])) / float64(^uint64(0))
 }
 
 func filterEventsForSpans(events []model.Event, accepted map[string]bool) []model.Event {

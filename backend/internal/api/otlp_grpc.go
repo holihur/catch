@@ -2,7 +2,11 @@ package api
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/catch/catch/backend/internal/model"
@@ -26,15 +30,30 @@ func (a *API) NewGRPCServer() (*grpc.Server, error) {
 		grpc.MaxSendMsgSize(maxOTLPBytes),
 		grpc.UnaryInterceptor(a.grpcRecovery),
 	}
-	if a.cfg.GRPCTLSCert != "" || a.cfg.GRPCTLSKey != "" {
+	if a.cfg.GRPCTLSCert != "" || a.cfg.GRPCTLSKey != "" || a.cfg.GRPCTLSClientCA != "" {
 		if a.cfg.GRPCTLSCert == "" || a.cfg.GRPCTLSKey == "" {
 			return nil, errors.New("GRPC_TLS_CERT and GRPC_TLS_KEY must both be set")
 		}
-		creds, err := credentials.NewServerTLSFromFile(a.cfg.GRPCTLSCert, a.cfg.GRPCTLSKey)
+		cert, err := tls.LoadX509KeyPair(a.cfg.GRPCTLSCert, a.cfg.GRPCTLSKey)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("load grpc tls keypair: %w", err)
 		}
-		opts = append(opts, grpc.Creds(creds))
+		tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
+		if a.cfg.GRPCTLSClientCA != "" {
+			pem, err := os.ReadFile(a.cfg.GRPCTLSClientCA)
+			if err != nil {
+				return nil, fmt.Errorf("read grpc client CA: %w", err)
+			}
+			pool := x509.NewCertPool()
+			if !pool.AppendCertsFromPEM(pem) {
+				return nil, errors.New("GRPC_TLS_CLIENT_CA contains no valid certificates")
+			}
+			tlsConfig.ClientCAs = pool
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+		}
+		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsConfig)))
+	} else if !a.cfg.GRPCAllowInsecure {
+		return nil, errors.New("OTLP gRPC is disabled: configure GRPC_TLS_CERT/GRPC_TLS_KEY (and optional GRPC_TLS_CLIENT_CA for mTLS), or set GRPC_ALLOW_INSECURE=true")
 	}
 	s := grpc.NewServer(opts...)
 	collectorlogsv1.RegisterLogsServiceServer(s, &otlpGRPCLogs{api: a})

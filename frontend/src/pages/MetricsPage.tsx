@@ -232,6 +232,7 @@ function MetricDialog({
   )
   const latest = chartData[chartData.length - 1] as (MetricPoint & { time: number }) | undefined
   const first = chartData[0] as (MetricPoint & { time: number }) | undefined
+  const hasDistribution = Boolean(latest?.distribution || latest?.quantiles?.length)
 
   return (
     <Dialog open={Boolean(metric)} onOpenChange={(open) => !open && onClose()}>
@@ -319,6 +320,7 @@ function MetricDialog({
             <Tabs defaultValue="series">
               <TabsList>
                 <TabsTrigger value="series">数据点</TabsTrigger>
+                {hasDistribution ? <TabsTrigger value="distribution">分布</TabsTrigger> : null}
                 <TabsTrigger value="attributes">属性</TabsTrigger>
               </TabsList>
               <TabsContent value="series" className="pt-3">
@@ -343,6 +345,11 @@ function MetricDialog({
                   </table>
                 </div>
               </TabsContent>
+              {hasDistribution && latest ? (
+                <TabsContent value="distribution" className="pt-3">
+                  <MetricDistributionView point={latest} unit={metric.unit} />
+                </TabsContent>
+              ) : null}
               <TabsContent value="attributes" className="pt-3">
                 <pre className="bg-muted/40 max-h-52 overflow-auto rounded-lg p-3 text-[11px]">
                   {JSON.stringify(metric.attributes ?? {}, null, 2)}
@@ -360,6 +367,128 @@ interface TooltipPayload {
   value?: number
   dataKey?: string
   payload?: MetricPoint & { time: number }
+}
+
+function MetricDistributionView({ point, unit }: { point: MetricPoint; unit?: string }) {
+  const distribution = point.distribution
+  const bounds = distribution?.explicitBounds ?? []
+  const counts = distribution?.bucketCounts ?? []
+  const total = counts.reduce((sum, count) => sum + count, 0)
+
+  if (point.quantiles?.length) {
+    return (
+      <div className="scrollbar-thin max-h-64 overflow-auto rounded-lg border border-border/40">
+        <table className="w-full text-[11px]">
+          <thead className="bg-muted/40 text-muted-foreground sticky top-0">
+            <tr>
+              <th className="px-2 py-1.5 text-left">分位</th>
+              <th className="px-2 py-1.5 text-right">值</th>
+            </tr>
+          </thead>
+          <tbody>
+            {point.quantiles.map((q) => (
+              <tr key={q.quantile} className="border-t border-border/30">
+                <td className="px-2 py-1 font-mono">p{(q.quantile * 100).toFixed(1)}</td>
+                <td className="px-2 py-1 text-right font-mono">{formatMetricValue(q.value, unit)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  if (!distribution) return null
+
+  if (counts.length > 0) {
+    return (
+      <div className="scrollbar-thin max-h-64 overflow-auto rounded-lg border border-border/40">
+        <table className="w-full text-[11px]">
+          <thead className="bg-muted/40 text-muted-foreground sticky top-0">
+            <tr>
+              <th className="px-2 py-1.5 text-left">Bucket</th>
+              <th className="px-2 py-1.5 text-right">数量</th>
+              <th className="px-2 py-1.5 text-right">占比</th>
+            </tr>
+          </thead>
+          <tbody>
+            {counts.map((count, index) => {
+              const upper = bounds[index]
+              const lower = index > 0 ? bounds[index - 1] : undefined
+              const label =
+                index === bounds.length
+                  ? `> ${formatMetricValue(bounds[bounds.length - 1] ?? 0, unit)}`
+                  : index === 0
+                    ? `≤ ${formatMetricValue(upper ?? 0, unit)}`
+                    : `(${formatMetricValue(lower ?? 0, unit)}, ${formatMetricValue(upper ?? 0, unit)}]`
+              return (
+                <tr key={index} className="border-t border-border/30">
+                  <td className="px-2 py-1 font-mono">{label}</td>
+                  <td className="px-2 py-1 text-right font-mono">{formatNumber(count)}</td>
+                  <td className="text-muted-foreground px-2 py-1 text-right font-mono">
+                    {total ? `${((count / total) * 100).toFixed(1)}%` : "—"}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <MetricStat label="Zero count" value={formatNumber(distribution.zeroCount ?? 0)} />
+        <MetricStat label="Scale" value={String(distribution.scale ?? 0)} />
+        <MetricStat
+          label="Buckets"
+          value={formatNumber(
+            (distribution.positiveBuckets?.length ?? 0) + (distribution.negativeBuckets?.length ?? 0),
+          )}
+        />
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <ExponentialBuckets
+          title="Positive"
+          offset={distribution.positiveOffset ?? 0}
+          buckets={distribution.positiveBuckets ?? []}
+        />
+        <ExponentialBuckets
+          title="Negative"
+          offset={distribution.negativeOffset ?? 0}
+          buckets={distribution.negativeBuckets ?? []}
+        />
+      </div>
+    </div>
+  )
+}
+
+function ExponentialBuckets({ title, offset, buckets }: { title: string; offset: number; buckets: number[] }) {
+  if (!buckets.length) {
+    return <p className="text-muted-foreground text-xs">{title}: 无 bucket</p>
+  }
+  return (
+    <div className="scrollbar-thin max-h-48 overflow-auto rounded-lg border border-border/40">
+      <table className="w-full text-[11px]">
+        <thead className="bg-muted/40 text-muted-foreground sticky top-0">
+          <tr>
+            <th className="px-2 py-1.5 text-left">{title} bucket</th>
+            <th className="px-2 py-1.5 text-right">数量</th>
+          </tr>
+        </thead>
+        <tbody>
+          {buckets.map((count, index) => (
+            <tr key={index} className="border-t border-border/30">
+              <td className="px-2 py-1 font-mono">{offset + index}</td>
+              <td className="px-2 py-1 text-right font-mono">{formatNumber(count)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
 }
 
 function MetricTooltip({

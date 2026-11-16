@@ -355,11 +355,44 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=
 
 - `service.name`、`service.version`、`deployment.environment` 会自动映射到服务/版本/环境
 - severity ≥ ERROR 的日志和带 `exception.*` 的日志会转为 error 事件并进入问题分组
-- traces 的所有 span 都会入库，并在 Trace 页面展示瀑布图；ERROR span / exception 会生成 issue
+- traces 的所有 span 默认入库，并在 Trace 页面展示瀑布图；ERROR span / exception 会生成 issue
+- 每个项目可配置 0-100% Trace 采样（按 trace ID 稳定哈希），错误 Trace 默认始终保留
 - metrics 支持 gauge、sum、histogram、exponential_histogram、summary，并在指标页面展示趋势
+- histogram 保留 explicit bounds / bucket counts，summary 保留 quantile，在指标详情「分布」中查看
 - `exception.stacktrace` 可以继续走 Source Map 还原
 - 请求体上限 20MB；单次超过 5000 条时返回标准 `partialSuccess`，接受前 5000 条
 - gRPC 直接支持，`GRPC_PORT=0` 可关闭；TLS 使用 `GRPC_TLS_CERT` / `GRPC_TLS_KEY`
+- 生产环境默认要求 gRPC TLS；未配证书且未设置 `GRPC_ALLOW_INSECURE=true` 时 gRPC 不启动。`GRPC_TLS_CLIENT_CA` 可开启 mTLS
+
+### 2.8 指标告警
+
+在 **告警** 页面创建规则，或调用 API：
+
+```http
+POST /api/alert-rules
+Content-Type: application/json
+
+{
+  "name": "API 延迟过高",
+  "projectId": "…",
+  "metric": "http.server.duration",
+  "service": "orders-api",
+  "aggregation": "max",
+  "operator": "gt",
+  "threshold": 500,
+  "windowSeconds": 300,
+  "severity": "critical",
+  "enabled": true
+}
+```
+
+- 聚合：`avg` / `max` / `min` / `sum` / `last`
+- 比较：`gt` / `gte` / `lt` / `lte`
+- 窗口：60-86400 秒
+- 级别：`warning` / `critical`
+- 默认每 30 秒评估（`ALERT_INTERVAL_SECONDS`）
+- 触发后只保留一条 firing 记录；条件恢复、规则暂停或删除时自动 resolved
+- `GET /api/alerts?status=firing|resolved|all` 查询告警历史
 
 ## 3. 服务端集成示例
 

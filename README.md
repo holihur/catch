@@ -20,8 +20,9 @@ Catch 是一个多租户日志与错误可观测平台：前端 SDK 和后端服
 | 源码跳转 | 在 Catch 内直接查看堆栈对应源码并高亮行号；Source Map 缺失时可跳转 GitHub/GitLab/Bitbucket/Gitea |
 | Source Map | 上传构建产物 Source Map，服务端在采集时把压缩堆栈还原为原始 TS/TSX/源文件行列 |
 | OpenTelemetry | OTLP/HTTP + gRPC：logs、metrics、完整 trace spans；protobuf/JSON/gzip、部分成功响应 |
-| Trace | 完整调用链存储、瀑布图、span 属性/事件/资源，错误 span 自动转为问题 |
-| Metrics | OTLP gauge/sum/histogram/summary 最新值与时间序列图表 |
+| Trace | 完整调用链存储、瀑布图、span 属性/事件/资源，错误 span 自动转为问题；按项目 0-100% 稳定采样 |
+| Metrics | OTLP gauge/sum/histogram/summary 最新值与时间序列；histogram bucket / summary quantile 分布 |
+| 告警 | 指标阈值规则、avg/max/min/sum/last 聚合、窗口与级别、firing/resolved 生命周期、自动恢复 |
 | 设置 | 项目与采集密钥、密钥轮换、成员角色、租户信息、OIDC 配置、SDK 接入示例与一键测试 |
 | 可观测性 | 后端请求日志/panic 自动落库；前端 SDK 捕获 `window.onerror`、`unhandledrejection`、React 错误边界和 API 5xx |
 
@@ -421,11 +422,14 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=
 
 - **Logs**：所有日志都会入库；ERROR/FATAL 或异常记录会生成 issue
 - **Traces**：所有 span 都会存储并在 **Trace** 页面展示瀑布图；ERROR span / exception 会生成 issue
-- **Metrics**：gauge、sum、histogram、exponential_histogram、summary 均会存储，**指标**页面可查看最新值与时间序列
+- **Metrics**：gauge、sum、histogram、exponential_histogram、summary 均会存储，**指标**页面可查看最新值与时间序列；histogram 的 explicit bounds/bucket counts、summary 的 quantile 会保留并在「分布」标签页展示
+- **Trace 采样**：设置 → 项目 → 采样，支持 0-100%；按 trace ID 稳定哈希采样，同一条 Trace 不会只存一部分；错误 Trace 默认始终保留
+- **指标告警**：每 `ALERT_INTERVAL_SECONDS`（默认 30 秒）评估一次，支持 avg/max/min/sum/last、统计窗口、warning/critical；触发后创建 firing 告警，恢复后自动 resolved；规则暂停/删除会同步恢复活动告警
 - 单次 OTLP 请求超过 5000 条时返回标准 `partialSuccess`（接受前 5000 条），不再整批拒绝
 - 请求体上限 20MB；同样受项目级 ingest 速率限制
 - `/v1/logs`、`/v1/traces`、`/v1/metrics` 是 OTel 默认 HTTP 路径别名
 - gRPC 直接监听 4317，支持 logs/traces/metrics 和 partial success
+- 生产环境（`APP_ENV=production`）默认要求 gRPC TLS；未配置证书且未显式设置 `GRPC_ALLOW_INSECURE=true` 时 gRPC 不启动。可选 `GRPC_TLS_CLIENT_CA` 开启 mTLS
 - OTLP 的 `service.version` 必须与 Source Map 的 release 一致，才能还原压缩堆栈
 
 ## 后端日志自动捕获
@@ -551,7 +555,12 @@ CATCH_RELEASE=web@1.2.3 \
 | GET | `/api/traces/{traceId}` | Trace 详情与全部 span |
 | GET | `/api/traces/services` | Trace 服务列表 |
 | GET | `/api/metrics` | 指标最新值列表 |
-| GET | `/api/metrics/series` | 指标时间序列 |
+| GET | `/api/metrics/series` | 指标时间序列（含 bucket/quantile） |
+| GET | `/api/alert-rules` | 告警规则列表 |
+| POST | `/api/alert-rules` | 创建告警规则（Admin+） |
+| PATCH | `/api/alert-rules/{id}` | 更新/启停告警规则（Admin+） |
+| DELETE | `/api/alert-rules/{id}` | 删除告警规则并恢复活动告警（Admin+） |
+| GET | `/api/alerts` | firing/resolved 告警事件 |
 | GET | `/api/overview` | 概览统计 + 时间序列 |
 | GET | `/api/insights` | 健康分、改进指标与建议 |
 | GET | `/api/issues` | 问题列表（状态/级别/来源/搜索/排序/分页） |
@@ -562,7 +571,7 @@ CATCH_RELEASE=web@1.2.3 \
 | GET | `/api/events/{id}` | 事件详情 |
 | GET | `/api/projects` | 项目列表（非 Admin 密钥脱敏） |
 | POST | `/api/projects` | 创建项目（Admin+） |
-| PATCH | `/api/projects/{id}` | 更新项目/源码映射（Admin+） |
+| PATCH | `/api/projects/{id}` | 更新项目/源码映射/Trace 采样（Admin+） |
 | POST | `/api/projects/{id}/rotate-key` | 轮换密钥（Admin+） |
 | GET | `/api/projects/{id}/sourcemaps` | Source Map 列表（Admin+） |
 | POST | `/api/projects/{id}/sourcemaps` | 上传 Source Map（Admin+，原始 JSON 或 multipart） |
@@ -595,7 +604,7 @@ CATCH_RELEASE=web@1.2.3 \
 - **CSRF**：Cookie 会话 + Origin 校验 + SameSite；写操作要求 JSON。
 - **速率限制**：按项目对 ingest 做固定窗口限流，超限返回 429 + `Retry-After`。
 - **输入限制**：1MB 请求体、100 条/批、字段截断、上下文超限标记 `_truncated`。
-- **保留策略**：Mongo TTL 索引按 `RETENTION_DAYS` 清理事件；问题与成员保留。
+- **保留策略**：Mongo TTL 索引按 `RETENTION_DAYS` 清理事件、span、指标与已恢复告警；问题、规则与成员保留。
 - **开发登录**：生产环境（`APP_ENV=production`）强制关闭；`APP_SECRET` 为默认值时拒绝启动。
 - **演示数据**：仅在 `SEED_DEMO=true` 时写入固定演示密钥，生产必须关闭。
 
@@ -622,6 +631,10 @@ cd frontend && pnpm typecheck && pnpm build
 - OTLP/HTTP：JSON、protobuf、gzip 日志、完整 trace、metrics 均实测入库
 - OTLP/gRPC：logs、traces、metrics 均实测通过
 - OTLP partial success：5001 条日志返回 rejectedLogRecords=1，前端接收 5000 条
+- 指标分布：histogram bucket counts/explicit bounds、summary quantile 写入并在指标详情展示
+- Trace 采样：0% + 错误保底时，普通 trace 丢弃、错误 trace 完整保留；100% 恢复全部
+- 指标告警：触发 → firing、修改阈值 → resolved；规则暂停/删除同步恢复
+- gRPC TLS：自签证书握手成功；生产未配 TLS 且未允许明文时 gRPC 安全关闭
 
 ---
 

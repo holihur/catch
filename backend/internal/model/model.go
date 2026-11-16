@@ -105,6 +105,9 @@ type Project struct {
 	RepoRoot         string `bson:"repoRoot,omitempty" json:"repoRoot,omitempty"`
 	RepoLinkTemplate string `bson:"repoLinkTemplate,omitempty" json:"repoLinkTemplate,omitempty"`
 
+	TraceSampleRate        float64 `bson:"traceSampleRate" json:"traceSampleRate"`
+	TraceErrorAlwaysSample bool    `bson:"traceErrorAlwaysSample" json:"traceErrorAlwaysSample"`
+
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
 	UpdatedAt time.Time `bson:"updatedAt" json:"updatedAt"`
 }
@@ -231,30 +234,51 @@ type SpanEvent struct {
 
 // MetricPoint is one OTLP metric data point. Histograms/summaries keep count
 // and sum; Value is the average for charting.
+type MetricQuantile struct {
+	Quantile float64 `bson:"quantile" json:"quantile"`
+	Value    float64 `bson:"value" json:"value"`
+}
+
+// MetricDistribution preserves histogram bucket layout. Explicit bounds are
+// used by classic histograms; exponential histograms keep their scale and
+// positive/negative bucket counts.
+type MetricDistribution struct {
+	BucketCounts    []uint64  `bson:"bucketCounts,omitempty" json:"bucketCounts,omitempty"`
+	ExplicitBounds  []float64 `bson:"explicitBounds,omitempty" json:"explicitBounds,omitempty"`
+	ZeroCount       uint64    `bson:"zeroCount,omitempty" json:"zeroCount,omitempty"`
+	Scale           int32     `bson:"scale,omitempty" json:"scale,omitempty"`
+	PositiveOffset  int32     `bson:"positiveOffset,omitempty" json:"positiveOffset,omitempty"`
+	PositiveBuckets []uint64  `bson:"positiveBuckets,omitempty" json:"positiveBuckets,omitempty"`
+	NegativeOffset  int32     `bson:"negativeOffset,omitempty" json:"negativeOffset,omitempty"`
+	NegativeBuckets []uint64  `bson:"negativeBuckets,omitempty" json:"negativeBuckets,omitempty"`
+}
+
 type MetricPoint struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	TenantID    primitive.ObjectID `bson:"tenantId" json:"tenantId"`
-	ProjectID   primitive.ObjectID `bson:"projectId" json:"projectId"`
-	Name        string             `bson:"name" json:"name"`
-	Description string             `bson:"description,omitempty" json:"description,omitempty"`
-	Unit        string             `bson:"unit,omitempty" json:"unit,omitempty"`
-	Type        string             `bson:"type" json:"type"`
-	Service     string             `bson:"service,omitempty" json:"service,omitempty"`
-	Environment string             `bson:"environment,omitempty" json:"environment,omitempty"`
-	Release     string             `bson:"release,omitempty" json:"release,omitempty"`
-	Platform    string             `bson:"platform,omitempty" json:"platform,omitempty"`
-	Timestamp   time.Time          `bson:"timestamp" json:"timestamp"`
-	StartTime   time.Time          `bson:"startTime,omitempty" json:"startTime,omitempty"`
-	Value       float64            `bson:"value" json:"value"`
-	Count       uint64             `bson:"count,omitempty" json:"count,omitempty"`
-	Sum         float64            `bson:"sum,omitempty" json:"sum,omitempty"`
-	Min         *float64           `bson:"min,omitempty" json:"min,omitempty"`
-	Max         *float64           `bson:"max,omitempty" json:"max,omitempty"`
-	Temporality string             `bson:"temporality,omitempty" json:"temporality,omitempty"`
-	IsMonotonic bool               `bson:"isMonotonic,omitempty" json:"isMonotonic,omitempty"`
-	Attributes  map[string]string  `bson:"attributes,omitempty" json:"attributes,omitempty"`
-	Resource    map[string]any     `bson:"resource,omitempty" json:"resource,omitempty"`
-	ReceivedAt  time.Time          `bson:"receivedAt" json:"receivedAt"`
+	ID           primitive.ObjectID  `bson:"_id,omitempty" json:"id"`
+	TenantID     primitive.ObjectID  `bson:"tenantId" json:"tenantId"`
+	ProjectID    primitive.ObjectID  `bson:"projectId" json:"projectId"`
+	Name         string              `bson:"name" json:"name"`
+	Description  string              `bson:"description,omitempty" json:"description,omitempty"`
+	Unit         string              `bson:"unit,omitempty" json:"unit,omitempty"`
+	Type         string              `bson:"type" json:"type"`
+	Service      string              `bson:"service,omitempty" json:"service,omitempty"`
+	Environment  string              `bson:"environment,omitempty" json:"environment,omitempty"`
+	Release      string              `bson:"release,omitempty" json:"release,omitempty"`
+	Platform     string              `bson:"platform,omitempty" json:"platform,omitempty"`
+	Timestamp    time.Time           `bson:"timestamp" json:"timestamp"`
+	StartTime    time.Time           `bson:"startTime,omitempty" json:"startTime,omitempty"`
+	Value        float64             `bson:"value" json:"value"`
+	Count        uint64              `bson:"count,omitempty" json:"count,omitempty"`
+	Sum          float64             `bson:"sum,omitempty" json:"sum,omitempty"`
+	Min          *float64            `bson:"min,omitempty" json:"min,omitempty"`
+	Max          *float64            `bson:"max,omitempty" json:"max,omitempty"`
+	Temporality  string              `bson:"temporality,omitempty" json:"temporality,omitempty"`
+	IsMonotonic  bool                `bson:"isMonotonic,omitempty" json:"isMonotonic,omitempty"`
+	Distribution *MetricDistribution `bson:"distribution,omitempty" json:"distribution,omitempty"`
+	Quantiles    []MetricQuantile    `bson:"quantiles,omitempty" json:"quantiles,omitempty"`
+	Attributes   map[string]string   `bson:"attributes,omitempty" json:"attributes,omitempty"`
+	Resource     map[string]any      `bson:"resource,omitempty" json:"resource,omitempty"`
+	ReceivedAt   time.Time           `bson:"receivedAt" json:"receivedAt"`
 }
 
 // SourceMap stores a gzipped source map for a generated bundle. Content is
@@ -291,4 +315,47 @@ func RoleRank(role string) int {
 // AtLeast reports whether role is at least min.
 func AtLeast(role, min string) bool {
 	return RoleRank(role) >= RoleRank(min)
+}
+
+// AlertRule defines a metric threshold that is evaluated periodically.
+type AlertRule struct {
+	ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	TenantID      primitive.ObjectID `bson:"tenantId" json:"tenantId"`
+	ProjectID     primitive.ObjectID `bson:"projectId" json:"projectId"`
+	Name          string             `bson:"name" json:"name"`
+	Metric        string             `bson:"metric" json:"metric"`
+	Service       string             `bson:"service,omitempty" json:"service,omitempty"`
+	Aggregation   string             `bson:"aggregation" json:"aggregation"`
+	Operator      string             `bson:"operator" json:"operator"`
+	Threshold     float64            `bson:"threshold" json:"threshold"`
+	WindowSeconds int                `bson:"windowSeconds" json:"windowSeconds"`
+	Severity      string             `bson:"severity" json:"severity"`
+	Enabled       bool               `bson:"enabled" json:"enabled"`
+	State         string             `bson:"state" json:"state"`
+	Value         float64            `bson:"value" json:"value"`
+	HasData       bool               `bson:"hasData" json:"hasData"`
+	LastEvaluated time.Time          `bson:"lastEvaluated,omitempty" json:"lastEvaluated,omitempty"`
+	FiredAt       *time.Time         `bson:"firedAt,omitempty" json:"firedAt,omitempty"`
+	CreatedAt     time.Time          `bson:"createdAt" json:"createdAt"`
+	UpdatedAt     time.Time          `bson:"updatedAt" json:"updatedAt"`
+}
+
+// Alert is one firing episode of an alert rule.
+type Alert struct {
+	ID         primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	TenantID   primitive.ObjectID `bson:"tenantId" json:"tenantId"`
+	ProjectID  primitive.ObjectID `bson:"projectId" json:"projectId"`
+	RuleID     primitive.ObjectID `bson:"ruleId" json:"ruleId"`
+	RuleName   string             `bson:"ruleName" json:"ruleName"`
+	Metric     string             `bson:"metric" json:"metric"`
+	Service    string             `bson:"service,omitempty" json:"service,omitempty"`
+	Severity   string             `bson:"severity" json:"severity"`
+	State      string             `bson:"state" json:"state"`
+	Operator   string             `bson:"operator" json:"operator"`
+	Threshold  float64            `bson:"threshold" json:"threshold"`
+	Value      float64            `bson:"value" json:"value"`
+	Message    string             `bson:"message" json:"message"`
+	StartedAt  time.Time          `bson:"startedAt" json:"startedAt"`
+	ResolvedAt *time.Time         `bson:"resolvedAt,omitempty" json:"resolvedAt,omitempty"`
+	UpdatedAt  time.Time          `bson:"updatedAt" json:"updatedAt"`
 }

@@ -26,6 +26,8 @@ type Store struct {
 	SourceMaps *mongo.Collection
 	Spans      *mongo.Collection
 	Metrics    *mongo.Collection
+	AlertRules *mongo.Collection
+	Alerts     *mongo.Collection
 }
 
 // Connect opens a MongoDB connection and ensures indexes exist.
@@ -59,10 +61,19 @@ func Connect(ctx context.Context, uri, dbName string, retention time.Duration) (
 		SourceMaps: db.Collection("source_maps"),
 		Spans:      db.Collection("spans"),
 		Metrics:    db.Collection("metrics"),
+		AlertRules: db.Collection("alert_rules"),
+		Alerts:     db.Collection("alerts"),
 	}
 	if err := s.ensureIndexes(ctx, retention); err != nil {
 		return nil, err
 	}
+	// Default trace sampling for projects created before sampling existed.
+	_, _ = s.Projects.UpdateMany(ctx,
+		bson.M{"traceSampleRate": bson.M{"$exists": false}},
+		bson.M{"$set": bson.M{"traceSampleRate": 1.0, "traceErrorAlwaysSample": true}})
+	_, _ = s.Projects.UpdateMany(ctx,
+		bson.M{"traceErrorAlwaysSample": bson.M{"$exists": false}},
+		bson.M{"$set": bson.M{"traceErrorAlwaysSample": true}})
 	return s, nil
 }
 
@@ -107,6 +118,10 @@ func (s *Store) ensureIndexes(ctx context.Context, retention time.Duration) erro
 		{"spans", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "service", Value: 1}, {Key: "startTime", Value: -1}}, idx("spans_service")},
 		{"metrics", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "name", Value: 1}, {Key: "timestamp", Value: -1}}, idx("metrics_name_time")},
 		{"metrics", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "timestamp", Value: -1}}, idx("metrics_time")},
+		{"alert_rules", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "createdAt", Value: -1}}, idx("alert_rules_project")},
+		{"alert_rules", bson.D{{Key: "enabled", Value: 1}}, idx("alert_rules_enabled")},
+		{"alerts", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "state", Value: 1}, {Key: "startedAt", Value: -1}}, idx("alerts_project_state_time")},
+		{"alerts", bson.D{{Key: "ruleId", Value: 1}, {Key: "state", Value: 1}}, idx("alerts_rule_state")},
 	}
 	for _, sp := range specs {
 		coll := s.DB.Collection(sp.coll)
@@ -126,6 +141,9 @@ func (s *Store) ensureIndexes(ctx context.Context, retention time.Duration) erro
 			return err
 		}
 		if err := s.ensureTTL(ctx, s.Metrics, "metrics", "timestamp", "ttl_metric", retention); err != nil {
+			return err
+		}
+		if err := s.ensureTTL(ctx, s.Alerts, "alerts", "resolvedAt", "ttl_alert", retention); err != nil {
 			return err
 		}
 	}

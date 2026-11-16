@@ -103,13 +103,15 @@ func (a *API) updateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name             *string `json:"name"`
-		Platform         *string `json:"platform"`
-		RepoProvider     *string `json:"repoProvider"`
-		RepoURL          *string `json:"repoUrl"`
-		RepoBranch       *string `json:"repoBranch"`
-		RepoRoot         *string `json:"repoRoot"`
-		RepoLinkTemplate *string `json:"repoLinkTemplate"`
+		Name                   *string  `json:"name"`
+		Platform               *string  `json:"platform"`
+		RepoProvider           *string  `json:"repoProvider"`
+		RepoURL                *string  `json:"repoUrl"`
+		RepoBranch             *string  `json:"repoBranch"`
+		RepoRoot               *string  `json:"repoRoot"`
+		RepoLinkTemplate       *string  `json:"repoLinkTemplate"`
+		TraceSampleRate        *float64 `json:"traceSampleRate"`
+		TraceErrorAlwaysSample *bool    `json:"traceErrorAlwaysSample"`
 	}
 	if err := httpx.DecodeJSON(w, r, &body, 16<<10); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "invalid_body", err.Error())
@@ -161,6 +163,17 @@ func (a *API) updateProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		set["repoRoot"] = root
+	}
+	if body.TraceSampleRate != nil {
+		rate := *body.TraceSampleRate
+		if rate < 0 || rate > 1 {
+			httpx.Error(w, http.StatusBadRequest, "invalid_sample_rate", "Trace 采样率必须在 0-1 之间")
+			return
+		}
+		set["traceSampleRate"] = rate
+	}
+	if body.TraceErrorAlwaysSample != nil {
+		set["traceErrorAlwaysSample"] = *body.TraceErrorAlwaysSample
 	}
 	if body.RepoLinkTemplate != nil {
 		tpl := strings.TrimSpace(*body.RepoLinkTemplate)

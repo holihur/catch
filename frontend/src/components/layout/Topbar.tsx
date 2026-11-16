@@ -30,6 +30,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/logs": "日志",
   "/traces": "Trace",
   "/metrics": "指标",
+  "/alerts": "告警",
   "/insights": "持续改进",
   "/settings": "设置",
 }

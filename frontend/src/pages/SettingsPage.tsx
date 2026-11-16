@@ -9,6 +9,7 @@ import {
   GitBranch,
   KeyRound,
   Loader2,
+  Percent,
   Upload,
   Plus,
   RefreshCw,
@@ -74,6 +75,7 @@ export function SettingsPage() {
   const [createOpen, setCreateOpen] = React.useState(false)
   const [sourceProject, setSourceProject] = React.useState<Project | null>(null)
   const [sourceMapProject, setSourceMapProject] = React.useState<Project | null>(null)
+  const [samplingProject, setSamplingProject] = React.useState<Project | null>(null)
   const [confirm, setConfirm] = React.useState<{ type: "delete" | "rotate"; project: Project } | null>(null)
   const [confirmBusy, setConfirmBusy] = React.useState(false)
 
@@ -165,7 +167,8 @@ export function SettingsPage() {
                         ) : null}
                       </CardTitle>
                       <CardDescription className="mt-1 font-mono text-xs">
-                        {p.slug} · {p.platform || "未设置平台"}
+                        {p.slug} · {p.platform || "未设置平台"} · Trace 采样{" "}
+                        {Math.round((p.traceSampleRate ?? 1) * 100)}%
                       </CardDescription>
                       {p.repoUrl ? (
                         <a
@@ -219,6 +222,9 @@ export function SettingsPage() {
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => setSourceMapProject(p)}>
                             <FileCode2 className="size-3.5" /> Source Maps
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setSamplingProject(p)}>
+                            <Percent className="size-3.5" /> 采样
                           </Button>
                           <Button
                             variant="ghost"
@@ -399,6 +405,17 @@ export function SettingsPage() {
         <ProjectSourceMapsDialog
           project={sourceMapProject}
           onClose={() => setSourceMapProject(null)}
+        />
+      ) : null}
+
+      {samplingProject ? (
+        <ProjectSamplingDialog
+          project={samplingProject}
+          onClose={() => setSamplingProject(null)}
+          onSaved={async () => {
+            await refreshProjects()
+            setSamplingProject(null)
+          }}
         />
       ) : null}
 
@@ -669,6 +686,90 @@ function ProjectSourceMapsDialog({
             ))
           )}
         </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ProjectSamplingDialog({
+  project,
+  onClose,
+  onSaved,
+}: {
+  project: Project
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const [percent, setPercent] = React.useState(Math.round((project.traceSampleRate ?? 1) * 100))
+  const [errorAlways, setErrorAlways] = React.useState(project.traceErrorAlwaysSample ?? true)
+  const [busy, setBusy] = React.useState(false)
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+      toast.error("采样率必须在 0-100 之间")
+      return
+    }
+    setBusy(true)
+    try {
+      await api.updateProject(project.id, {
+        traceSampleRate: percent / 100,
+        traceErrorAlwaysSample: errorAlways,
+      })
+      toast.success("Trace 采样设置已保存")
+      await onSaved()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "保存失败")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={save} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Percent className="size-4" /> Trace 采样
+            </DialogTitle>
+            <DialogDescription>
+              控制 <strong>{project.name}</strong> 的 span 入库比例。按 trace ID 稳定采样，同一条 Trace 不会只存一部分。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="trace-sample-rate">采样率（%）</Label>
+            <Input
+              id="trace-sample-rate"
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              value={percent}
+              onChange={(e) => setPercent(Number(e.target.value))}
+            />
+            <p className="text-muted-foreground text-[11px]">
+              100% 保存全部 Trace，0% 只保留错误 Trace（若开启下方选项）。
+            </p>
+          </div>
+          <div className="flex items-center justify-between gap-4 rounded-xl bg-muted/40 px-3 py-2.5">
+            <div>
+              <p className="text-sm font-medium">错误 Trace 始终保留</p>
+              <p className="text-muted-foreground text-[11px]">
+                含 ERROR span 或 exception 事件的 Trace 不受采样率影响。
+              </p>
+            </div>
+            <Switch checked={errorAlways} onCheckedChange={setErrorAlways} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+              取消
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" /> : null} 保存
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

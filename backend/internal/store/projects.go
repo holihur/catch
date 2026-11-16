@@ -16,7 +16,11 @@ func (s *Store) CreateProject(ctx context.Context, tenantID primitive.ObjectID, 
 	now := time.Now().UTC()
 	p := model.Project{
 		TenantID: tenantID, Name: name, Slug: slug, Platform: platform,
-		IngestKey: "ck_" + secure.RandomToken(24), CreatedAt: now, UpdatedAt: now,
+		IngestKey:              "ck_" + secure.RandomToken(24),
+		TraceSampleRate:        1,
+		TraceErrorAlwaysSample: true,
+		CreatedAt:              now,
+		UpdatedAt:              now,
 	}
 	res, err := s.Projects.InsertOne(ctx, p)
 	if err != nil {

@@ -19,6 +19,9 @@ import type {
   TraceListResponse,
   MetricsListResponse,
   MetricSeriesResponse,
+  AlertRule,
+  AlertRulesResponse,
+  AlertsResponse,
   TenantResponse,
   User,
 } from "./types"
@@ -151,6 +154,8 @@ export const api = {
       repoBranch?: string
       repoRoot?: string
       repoLinkTemplate?: string
+      traceSampleRate?: number
+      traceErrorAlwaysSample?: boolean
     },
   ) => request<Project>(`/api/projects/${id}`, { method: "PATCH", body }),
   rotateKey: (id: string) =>
@@ -209,6 +214,40 @@ export const api = {
     service?: string
     range?: string
   }) => request<MetricSeriesResponse>(`/api/metrics/series${qs(params)}`),
+
+  // alerts
+  alertRules: (projectId?: string) =>
+    request<AlertRulesResponse>(`/api/alert-rules${qs({ projectId })}`),
+  createAlertRule: (body: {
+    name: string
+    metric: string
+    service?: string
+    aggregation?: string
+    operator: string
+    threshold: number
+    windowSeconds: number
+    severity: string
+    enabled?: boolean
+    projectId?: string
+  }) => request<AlertRule>("/api/alert-rules", { method: "POST", body }),
+  updateAlertRule: (
+    id: string,
+    body: {
+      name?: string
+      metric?: string
+      service?: string
+      aggregation?: string
+      operator?: string
+      threshold?: number
+      windowSeconds?: number
+      severity?: string
+      enabled?: boolean
+    },
+  ) => request<AlertRule>(`/api/alert-rules/${id}`, { method: "PATCH", body }),
+  deleteAlertRule: (id: string) =>
+    request<{ ok: boolean }>(`/api/alert-rules/${id}`, { method: "DELETE" }),
+  alerts: (params: { projectId?: string; status?: string }) =>
+    request<AlertsResponse>(`/api/alerts${qs(params)}`),
 
   // analytics
   overview: (params: { projectId?: string; range?: string }) =>

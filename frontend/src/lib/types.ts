@@ -41,6 +41,8 @@ export interface Project {
   repoBranch?: string
   repoRoot?: string
   repoLinkTemplate?: string
+  traceSampleRate?: number
+  traceErrorAlwaysSample?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -363,6 +365,22 @@ export interface MetricSummary {
   attributes?: Record<string, string>
 }
 
+export interface MetricQuantile {
+  quantile: number
+  value: number
+}
+
+export interface MetricDistribution {
+  bucketCounts?: number[]
+  explicitBounds?: number[]
+  zeroCount?: number
+  scale?: number
+  positiveOffset?: number
+  positiveBuckets?: number[]
+  negativeOffset?: number
+  negativeBuckets?: number[]
+}
+
 export interface MetricPoint {
   id: string
   name: string
@@ -379,6 +397,8 @@ export interface MetricPoint {
   max?: number
   temporality?: string
   isMonotonic?: boolean
+  distribution?: MetricDistribution
+  quantiles?: MetricQuantile[]
   attributes?: Record<string, string>
 }
 
@@ -395,4 +415,54 @@ export interface MetricSeriesResponse {
   points: MetricPoint[]
   from: string
   to: string
+}
+
+export interface AlertRule {
+  id: string
+  tenantId: string
+  projectId: string
+  name: string
+  metric: string
+  service?: string
+  aggregation: "avg" | "max" | "min" | "sum" | "last"
+  operator: "gt" | "gte" | "lt" | "lte"
+  threshold: number
+  windowSeconds: number
+  severity: "warning" | "critical"
+  enabled: boolean
+  state: "pending" | "ok" | "firing" | "nodata" | string
+  value: number
+  hasData: boolean
+  lastEvaluated?: string
+  firedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AlertItem {
+  id: string
+  tenantId: string
+  projectId: string
+  ruleId: string
+  ruleName: string
+  metric: string
+  service?: string
+  severity: "warning" | "critical"
+  state: "firing" | "resolved"
+  operator: string
+  threshold: number
+  value: number
+  message: string
+  startedAt: string
+  resolvedAt?: string
+  updatedAt: string
+}
+
+export interface AlertRulesResponse {
+  rules: AlertRule[]
+}
+
+export interface AlertsResponse {
+  alerts: AlertItem[]
+  firing: number
 }

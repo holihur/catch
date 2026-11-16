@@ -30,6 +30,9 @@ const TraceDetailPage = React.lazy(() =>
 const MetricsPage = React.lazy(() =>
   import("@/pages/MetricsPage").then((m) => ({ default: m.MetricsPage })),
 )
+const AlertsPage = React.lazy(() =>
+  import("@/pages/AlertsPage").then((m) => ({ default: m.AlertsPage })),
+)
 const InsightsPage = React.lazy(() =>
   import("@/pages/InsightsPage").then((m) => ({ default: m.InsightsPage })),
 )
@@ -63,6 +66,7 @@ export function App() {
         <Route path="traces" element={<TracesPage />} />
         <Route path="traces/:id" element={<TraceDetailPage />} />
         <Route path="metrics" element={<MetricsPage />} />
+        <Route path="alerts" element={<AlertsPage />} />
         <Route path="insights" element={<InsightsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
