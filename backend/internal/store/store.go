@@ -30,6 +30,7 @@ type Store struct {
 	Alerts     *mongo.Collection
 	Channels   *mongo.Collection
 	Deliveries *mongo.Collection
+	Silences   *mongo.Collection
 }
 
 // Connect opens a MongoDB connection and ensures indexes exist.
@@ -67,6 +68,7 @@ func Connect(ctx context.Context, uri, dbName string, retention time.Duration) (
 		Alerts:     db.Collection("alerts"),
 		Channels:   db.Collection("notification_channels"),
 		Deliveries: db.Collection("notification_deliveries"),
+		Silences:   db.Collection("alert_silences"),
 	}
 	if err := s.ensureIndexes(ctx, retention); err != nil {
 		return nil, err
@@ -126,10 +128,12 @@ func (s *Store) ensureIndexes(ctx context.Context, retention time.Duration) erro
 		{"alert_rules", bson.D{{Key: "enabled", Value: 1}}, idx("alert_rules_enabled")},
 		{"alerts", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "state", Value: 1}, {Key: "startedAt", Value: -1}}, idx("alerts_project_state_time")},
 		{"alerts", bson.D{{Key: "ruleId", Value: 1}, {Key: "state", Value: 1}}, idx("alerts_rule_state")},
+		{"alerts", bson.D{{Key: "ruleId", Value: 1}}, idx("uniq_firing_alert").SetUnique(true).SetPartialFilterExpression(bson.M{"state": "firing"})},
 		{"notification_channels", bson.D{{Key: "tenantId", Value: 1}, {Key: "createdAt", Value: -1}}, idx("channels_tenant")},
 		{"notification_deliveries", bson.D{{Key: "alertId", Value: 1}, {Key: "channelId", Value: 1}, {Key: "event", Value: 1}}, idx("uniq_delivery").SetUnique(true)},
 		{"notification_deliveries", bson.D{{Key: "tenantId", Value: 1}, {Key: "projectId", Value: 1}, {Key: "createdAt", Value: -1}}, idx("deliveries_project")},
 		{"notification_deliveries", bson.D{{Key: "status", Value: 1}, {Key: "nextAttemptAt", Value: 1}}, idx("deliveries_due")},
+		{"alert_silences", bson.D{{Key: "tenantId", Value: 1}, {Key: "startsAt", Value: 1}, {Key: "endsAt", Value: 1}}, idx("silences_tenant_window")},
 	}
 	for _, sp := range specs {
 		coll := s.DB.Collection(sp.coll)

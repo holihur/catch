@@ -25,6 +25,7 @@ import type {
   NotificationChannel,
   NotificationChannelsResponse,
   NotificationDeliveriesResponse,
+  AlertSilence,
   TenantResponse,
   User,
 } from "./types"
@@ -282,6 +283,22 @@ export const api = {
     }),
   notificationDeliveries: (params: { status?: string; limit?: number }) =>
     request<NotificationDeliveriesResponse>(`/api/notification-deliveries${qs(params)}`),
+  alertSilences: (projectId?: string) =>
+    request<{ silences: AlertSilence[] }>(`/api/alert-silences${qs({ projectId })}`),
+  createAlertSilence: (body: {
+    name: string
+    reason?: string
+    projectId?: string
+    ruleIds?: string[]
+    startsAt: string
+    endsAt: string
+  }) => request<AlertSilence>("/api/alert-silences", { method: "POST", body }),
+  updateAlertSilence: (
+    id: string,
+    body: { name?: string; reason?: string; ruleIds?: string[]; startsAt?: string; endsAt?: string },
+  ) => request<AlertSilence>(`/api/alert-silences/${id}`, { method: "PATCH", body }),
+  deleteAlertSilence: (id: string) =>
+    request<{ ok: boolean }>(`/api/alert-silences/${id}`, { method: "DELETE" }),
 
   // analytics
   overview: (params: { projectId?: string; range?: string }) =>

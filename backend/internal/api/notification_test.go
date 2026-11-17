@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/catch/catch/backend/internal/model"
@@ -61,5 +62,50 @@ func TestSendWebhookSignature(t *testing.T) {
 	want := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 	if gotSignature != want {
 		t.Fatalf("signature mismatch: got %q want %q", gotSignature, want)
+	}
+}
+
+func TestWebhookPrivatePolicy(t *testing.T) {
+	blocked := newWebhookPolicy(false, nil)
+	if err := blocked.CheckURL("http://127.0.0.1:9999/hook"); err == nil {
+		t.Fatal("expected loopback webhook to be rejected")
+	}
+	if err := blocked.CheckURL("http://localhost:9999/hook"); err == nil {
+		t.Fatal("expected localhost webhook to be rejected")
+	}
+	allowlisted := newWebhookPolicy(false, []string{"127.0.0.1"})
+	if err := allowlisted.CheckURL("http://127.0.0.1:9999/hook"); err != nil {
+		t.Fatalf("allowlisted IP rejected: %v", err)
+	}
+	allowAll := newWebhookPolicy(true, nil)
+	if err := allowAll.CheckURL("http://localhost:9999/hook"); err != nil {
+		t.Fatalf("allow-private rejected: %v", err)
+	}
+}
+
+func TestWebhookPrivatePolicyDial(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	blockedClient := newNotificationHTTPClient(newWebhookPolicy(false, nil))
+	resp, err := blockedClient.Get(ts.URL)
+	if err == nil {
+		resp.Body.Close()
+		t.Fatal("expected blocked dial to fail")
+	}
+	if !strings.Contains(err.Error(), "blocked private") {
+		t.Fatalf("unexpected blocked error: %v", err)
+	}
+
+	allowedClient := newNotificationHTTPClient(newWebhookPolicy(false, []string{"127.0.0.1"}))
+	resp, err = allowedClient.Get(ts.URL)
+	if err != nil {
+		t.Fatalf("allowlisted dial failed: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("unexpected status: %d", resp.StatusCode)
 	}
 }

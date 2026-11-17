@@ -129,6 +129,12 @@ func (a *API) createNotificationChannel(w http.ResponseWriter, r *http.Request) 
 		httpx.Error(w, http.StatusBadRequest, "invalid_channel", msg)
 		return
 	}
+	if channel.Type == "webhook" {
+		if err := a.notifyPolicy.CheckURL(channel.WebhookURL); err != nil {
+			httpx.Error(w, http.StatusBadRequest, "unsafe_webhook", err.Error())
+			return
+		}
+	}
 	if err := a.store.CreateNotificationChannel(r.Context(), channel); err != nil {
 		a.logError(r, "create notification channel failed", err)
 		httpx.Error(w, http.StatusInternalServerError, "internal_error", "无法创建通知渠道")
@@ -195,6 +201,12 @@ func (a *API) updateNotificationChannel(w http.ResponseWriter, r *http.Request) 
 		httpx.Error(w, http.StatusBadRequest, "invalid_channel", msg)
 		return
 	}
+	if channel.Type == "webhook" {
+		if err := a.notifyPolicy.CheckURL(channel.WebhookURL); err != nil {
+			httpx.Error(w, http.StatusBadRequest, "unsafe_webhook", err.Error())
+			return
+		}
+	}
 	set := bson.M{
 		"name": channel.Name, "type": channel.Type, "enabled": channel.Enabled,
 		"webhookUrl": channel.WebhookURL, "webhookSecretEnc": channel.WebhookSecretEnc,
@@ -241,6 +253,12 @@ func (a *API) testNotificationChannel(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusInternalServerError, "internal_error", "无法加载通知渠道")
 		return
 	}
+	if channel.Type == "webhook" {
+		if err := a.notifyPolicy.CheckURL(channel.WebhookURL); err != nil {
+			httpx.Error(w, http.StatusBadRequest, "unsafe_webhook", err.Error())
+			return
+		}
+	}
 	payload := notificationPayload{
 		Version: 1, Event: "test",
 		Rule:         notificationRule{Name: "Catch 测试通知", Metric: "catch.test", Threshold: 1, Operator: "gt", Severity: "warning"},
@@ -278,7 +296,7 @@ func (a *API) listNotificationDeliveries(w http.ResponseWriter, r *http.Request)
 	}
 	status := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
 	switch status {
-	case "", "all", "pending", "sent", "failed":
+	case "", "all", "pending", "processing", "sent", "failed":
 	default:
 		httpx.Error(w, http.StatusBadRequest, "invalid_status", "status 无效")
 		return

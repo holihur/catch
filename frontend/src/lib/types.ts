@@ -496,7 +496,7 @@ export interface NotificationDelivery {
   channelName: string
   channelType: "webhook" | "email"
   event: "firing" | "resolved" | "test" | string
-  status: "pending" | "sent" | "failed"
+  status: "pending" | "processing" | "sent" | "failed"
   attempts: number
   statusCode?: number
   error?: string
@@ -508,4 +508,22 @@ export interface NotificationDelivery {
 
 export interface NotificationDeliveriesResponse {
   deliveries: NotificationDelivery[]
+}
+
+export interface AlertSilence {
+  id: string
+  tenantId: string
+  projectId?: string
+  name: string
+  reason?: string
+  startsAt: string
+  endsAt: string
+  ruleIds?: string[]
+  createdBy?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AlertSilencesResponse {
+  silences: AlertSilence[]
 }

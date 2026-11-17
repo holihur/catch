@@ -311,7 +311,7 @@ func (a *API) updateAlertRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Enabled != nil && !*body.Enabled {
-		a.resolveRuleAlerts(r.Context(), *rule)
+		a.resolveRuleAlertsRespectingSilence(r.Context(), *rule)
 	}
 	httpx.JSON(w, http.StatusOK, rule)
 }
@@ -324,7 +324,7 @@ func (a *API) deleteAlertRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rule, err := a.store.AlertRuleByID(r.Context(), t.ID, id); err == nil {
-		a.resolveRuleAlerts(r.Context(), *rule)
+		a.resolveRuleAlertsRespectingSilence(r.Context(), *rule)
 	}
 	if err := a.store.DeleteAlertRule(r.Context(), t.ID, id); err != nil {
 		a.logError(r, "delete alert rule failed", err)

@@ -83,21 +83,37 @@ func (s *Store) EnqueueNotificationDelivery(ctx context.Context, delivery *model
 	return nil
 }
 
-func (s *Store) DueNotificationDeliveries(ctx context.Context, limit int64) ([]model.NotificationDelivery, error) {
+// ClaimNotificationDeliveries atomically leases due deliveries for one worker.
+// A crashed worker's processing lease is recovered after five minutes.
+func (s *Store) ClaimNotificationDeliveries(ctx context.Context, limit int64) ([]model.NotificationDelivery, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	cursor, err := s.Deliveries.Find(ctx, bson.M{
-		"status":        "pending",
-		"nextAttemptAt": bson.M{"$lte": time.Now().UTC()},
-	}, options.Find().SetSort(bson.D{{Key: "nextAttemptAt", Value: 1}}).SetLimit(limit))
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-	out := make([]model.NotificationDelivery, 0)
-	if err := cursor.All(ctx, &out); err != nil {
-		return nil, err
+	now := time.Now().UTC()
+	_, _ = s.Deliveries.UpdateMany(ctx,
+		bson.M{"status": "processing", "nextAttemptAt": bson.M{"$lte": now}},
+		bson.M{"$set": bson.M{"status": "pending", "updatedAt": now}})
+
+	out := make([]model.NotificationDelivery, 0, limit)
+	for int64(len(out)) < limit {
+		var delivery model.NotificationDelivery
+		err := s.Deliveries.FindOneAndUpdate(ctx,
+			bson.M{"status": "pending", "nextAttemptAt": bson.M{"$lte": now}},
+			bson.M{
+				"$set": bson.M{"status": "processing", "nextAttemptAt": now.Add(5 * time.Minute), "updatedAt": now},
+				"$inc": bson.M{"attempts": 1},
+			},
+			options.FindOneAndUpdate().
+				SetSort(bson.D{{Key: "nextAttemptAt", Value: 1}}).
+				SetReturnDocument(options.After),
+		).Decode(&delivery)
+		if err != nil {
+			if mongo.ErrNoDocuments == err {
+				break
+			}
+			return out, err
+		}
+		out = append(out, delivery)
 	}
 	return out, nil
 }

@@ -393,6 +393,7 @@ Content-Type: application/json
 - 默认每 30 秒评估（`ALERT_INTERVAL_SECONDS`）
 - 触发后只保留一条 firing 记录；条件恢复、规则暂停或删除时自动 resolved
 - `GET /api/alerts?status=firing|resolved|all` 查询告警历史
+- **静默窗口**：在告警页面创建维护窗口，窗口内不创建新的 firing、不发通知；支持项目或指定规则范围
 
 ### 2.9 通知渠道
 
@@ -465,6 +466,30 @@ SMTP_TLS_MODE=starttls   # starttls / tls / none
 - 失败指数退避，最多 `NOTIFY_MAX_ATTEMPTS`（默认 5）次
 - `GET /api/notification-deliveries?status=pending|sent|failed&limit=50` 查看状态与错误
 - 删除渠道会自动从所有规则中解除绑定
+- 生产环境默认拒绝内网 Webhook；需要访问内网时配置 `NOTIFY_PRIVATE_ALLOWLIST`（主机名/IP/CIDR）或 `NOTIFY_ALLOW_PRIVATE=true`
+- 多实例部署时，worker 通过 MongoDB 原子 lease 抢占投递，避免同一条通知重复发送
+
+### 2.10 静默窗口
+
+```http
+POST /api/alert-silences
+Content-Type: application/json
+
+{
+  "name": "订单服务发布",
+  "reason": "v2.3 灰度发布",
+  "projectId": "…",
+  "ruleIds": ["…"],
+  "startsAt": "2026-11-16T12:00:00Z",
+  "endsAt": "2026-11-16T13:00:00Z"
+}
+```
+
+- `projectId` 留空表示全部项目
+- `ruleIds` 留空表示范围内全部规则
+- 生效期间不创建新的 firing 告警，也不发送 firing/resolved 通知
+- 窗口结束后下一轮评估会按当前指标重新触发
+- `GET /api/alert-silences?projectId=…` 查询窗口
 
 ## 3. 服务端集成示例
 

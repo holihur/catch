@@ -67,7 +67,7 @@ func (a *API) StartNotificationWorker(ctx context.Context) {
 }
 
 func (a *API) processDueNotifications(ctx context.Context) {
-	deliveries, err := a.store.DueNotificationDeliveries(ctx, 50)
+	deliveries, err := a.store.ClaimNotificationDeliveries(ctx, 50)
 	if err != nil {
 		a.logger.Slog.WarnContext(ctx, "notification worker: list due failed", "error", err)
 		return
@@ -93,7 +93,10 @@ func (a *API) processNotificationDelivery(ctx context.Context, delivery model.No
 
 func (a *API) finishDelivery(ctx context.Context, delivery model.NotificationDelivery, statusCode int, sendErr error, success bool) {
 	now := time.Now().UTC()
-	attempts := delivery.Attempts + 1
+	attempts := delivery.Attempts
+	if attempts < 1 {
+		attempts = 1
+	}
 	set := bson.M{
 		"attempts":   attempts,
 		"statusCode": statusCode,
@@ -164,7 +167,11 @@ func (a *API) sendWebhook(ctx context.Context, channel model.NotificationChannel
 		mac.Write(body)
 		req.Header.Set("X-Catch-Signature", "sha256="+hex.EncodeToString(mac.Sum(nil)))
 	}
-	resp, err := notificationHTTPClient.Do(req)
+	client := notificationHTTPClient
+	if a.notifyClient != nil {
+		client = a.notifyClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, err
 	}
@@ -333,7 +340,15 @@ func (a *API) enqueueAlertNotifications(ctx context.Context, rule model.AlertRul
 	}
 }
 
-func (a *API) resolveRuleAlerts(ctx context.Context, rule model.AlertRule) {
+func (a *API) resolveRuleAlertsRespectingSilence(ctx context.Context, rule model.AlertRule) {
+	notify := true
+	if silenced, err := a.store.IsRuleSilenced(ctx, rule.TenantID, rule.ProjectID, rule.ID, time.Now().UTC()); err == nil {
+		notify = !silenced
+	}
+	a.resolveRuleAlerts(ctx, rule, notify)
+}
+
+func (a *API) resolveRuleAlerts(ctx context.Context, rule model.AlertRule, notify bool) {
 	alert, err := a.store.FiringAlert(ctx, rule.ID)
 	if err != nil || alert == nil {
 		return
@@ -345,5 +360,7 @@ func (a *API) resolveRuleAlerts(ctx context.Context, rule model.AlertRule) {
 	alert.State = "resolved"
 	alert.ResolvedAt = &now
 	alert.UpdatedAt = now
-	a.enqueueAlertNotifications(ctx, rule, *alert, "resolved")
+	if notify {
+		a.enqueueAlertNotifications(ctx, rule, *alert, "resolved")
+	}
 }

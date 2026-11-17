@@ -10,27 +10,29 @@ import (
 
 // Config holds all runtime configuration for the Catch API.
 type Config struct {
-	Env            string
-	Port           string
-	GRPCPort       string
-	PublicURL      string // URL of the API (used for OIDC redirect URIs)
-	AppURL         string // URL of the web app (used after login)
-	MongoURI       string
-	MongoDB        string
-	StaticDir      string
-	AllowDev       bool
-	SeedDemo       bool
-	LogLevel       string
-	SessionTTL     time.Duration
-	CookieName     string
-	CookieSecure   bool
-	AppSecret      string
-	Retention      time.Duration
-	RateLimit      int // max ingest events per minute per project
-	AlertInterval  time.Duration
-	NotifyInterval time.Duration
-	NotifyAttempts int
-	CORSOrigins    []string
+	Env                    string
+	Port                   string
+	GRPCPort               string
+	PublicURL              string // URL of the API (used for OIDC redirect URIs)
+	AppURL                 string // URL of the web app (used after login)
+	MongoURI               string
+	MongoDB                string
+	StaticDir              string
+	AllowDev               bool
+	SeedDemo               bool
+	LogLevel               string
+	SessionTTL             time.Duration
+	CookieName             string
+	CookieSecure           bool
+	AppSecret              string
+	Retention              time.Duration
+	RateLimit              int // max ingest events per minute per project
+	AlertInterval          time.Duration
+	NotifyInterval         time.Duration
+	NotifyAttempts         int
+	NotifyAllowPrivate     bool
+	NotifyPrivateAllowlist []string
+	CORSOrigins            []string
 
 	// Optional bootstrap OIDC config. When set, the tenant is upserted on boot.
 	OIDCTenantSlug     string
@@ -153,6 +155,8 @@ func Load() (Config, error) {
 		SMTPTLSMode:        strings.ToLower(env("SMTP_TLS_MODE", "starttls")),
 	}
 	cfg.GRPCAllowInsecure = envBool("GRPC_ALLOW_INSECURE", cfg.Env != "production")
+	cfg.NotifyAllowPrivate = envBool("NOTIFY_ALLOW_PRIVATE", cfg.Env != "production")
+	cfg.NotifyPrivateAllowlist = envList("NOTIFY_PRIVATE_ALLOWLIST")
 
 	if cfg.CORSOrigins == nil {
 		cfg.CORSOrigins = []string{cfg.AppURL, cfg.PublicURL}

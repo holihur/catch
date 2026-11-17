@@ -2,7 +2,9 @@ import * as React from "react"
 import {
   AlertTriangle,
   Bell,
+  BellOff,
   BellRing,
+  CalendarClock,
   CheckCircle2,
   Loader2,
   Mail,
@@ -15,10 +17,17 @@ import {
 import { toast } from "sonner"
 
 import { api } from "@/lib/api"
-import type { AlertItem, AlertRule, NotificationChannel, NotificationDelivery } from "@/lib/types"
+import type {
+  AlertItem,
+  AlertRule,
+  AlertSilence,
+  NotificationChannel,
+  NotificationDelivery,
+  Project,
+} from "@/lib/types"
 import { useAuth } from "@/context/AuthContext"
 import { useProjects } from "@/context/ProjectContext"
-import { cn, formatNumber, relativeTime } from "@/lib/utils"
+import { cn, formatFullDate, formatNumber, relativeTime } from "@/lib/utils"
 import { PageHeader } from "@/components/common/PageHeader"
 import { EmptyState } from "@/components/common/EmptyState"
 import { ErrorState } from "@/components/common/ErrorState"
@@ -58,7 +67,7 @@ function windowLabel(seconds: number): string {
 }
 
 export function AlertsPage() {
-  const { selected } = useProjects()
+  const { selected, projects } = useProjects()
   const { me } = useAuth()
   const canManage = Boolean(me?.permissions.canManage)
   const [rules, setRules] = React.useState<AlertRule[]>([])
@@ -72,22 +81,26 @@ export function AlertsPage() {
   const [channels, setChannels] = React.useState<NotificationChannel[]>([])
   const [smtpConfigured, setSmtpConfigured] = React.useState(false)
   const [channelsOpen, setChannelsOpen] = React.useState(false)
+  const [silences, setSilences] = React.useState<AlertSilence[]>([])
+  const [silencesOpen, setSilencesOpen] = React.useState(false)
   const projectId = selected?.id
 
   const load = React.useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [ruleRes, alertRes, channelRes] = await Promise.all([
+      const [ruleRes, alertRes, channelRes, silenceRes] = await Promise.all([
         api.alertRules(projectId),
         api.alerts({ projectId, status }),
         api.notificationChannels(),
+        api.alertSilences(projectId),
       ])
       setRules(ruleRes.rules ?? [])
       setAlerts(alertRes.alerts ?? [])
       setFiringTotal(alertRes.firing ?? 0)
       setChannels(channelRes.channels ?? [])
       setSmtpConfigured(channelRes.smtpConfigured)
+      setSilences(silenceRes.silences ?? [])
     } catch (err) {
       setError(err)
     } finally {
@@ -140,6 +153,10 @@ export function AlertsPage() {
   }
 
   const firingCount = firingTotal
+  const now = Date.now()
+  const activeSilences = silences.filter(
+    (silence) => new Date(silence.startsAt).getTime() <= now && new Date(silence.endsAt).getTime() > now,
+  )
 
   return (
     <div className="space-y-6">
@@ -149,6 +166,9 @@ export function AlertsPage() {
         actions={
           canManage ? (
             <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setSilencesOpen(true)}>
+                <BellOff className="size-4" /> 静默
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setChannelsOpen(true)}>
                 <Send className="size-4" /> 通知渠道
               </Button>
@@ -162,6 +182,18 @@ export function AlertsPage() {
 
       {!projectId && canManage ? (
         <p className="text-muted-foreground text-xs">请先在顶部选择一个项目，再创建告警规则。</p>
+      ) : null}
+
+      {activeSilences.length > 0 ? (
+        <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/10 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-300">
+          <BellOff className="mt-0.5 size-4 shrink-0" />
+          <div className="min-w-0">
+            <p className="font-medium">维护窗口生效中，告警通知已静默</p>
+            <p className="mt-0.5 text-[11px] opacity-80">
+              {activeSilences.map((silence) => `${silence.name}（至 ${formatFullDate(silence.endsAt)}）`).join("；")}
+            </p>
+          </div>
+        </div>
       ) : null}
 
       {loading && rules.length === 0 && alerts.length === 0 ? (
@@ -317,7 +349,15 @@ export function AlertsPage() {
                                   : "bg-muted-foreground/50",
                             )}
                           />
-                          {rule.state === "firing" ? "Firing" : rule.state === "ok" ? "正常" : rule.state === "nodata" ? "无数据" : "待评估"}
+                          {rule.state === "firing"
+                            ? "Firing"
+                            : rule.state === "ok"
+                              ? "正常"
+                              : rule.state === "nodata"
+                                ? "无数据"
+                                : rule.state === "silenced"
+                                  ? "静默中"
+                                  : "待评估"}
                         </span>
                         <span>窗口 {windowLabel(rule.windowSeconds)}</span>
                         {rule.service ? <span>服务 {rule.service}</span> : <span>全部服务</span>}
@@ -364,6 +404,17 @@ export function AlertsPage() {
             setEditing(null)
             await load()
           }}
+        />
+      ) : null}
+
+      {silencesOpen ? (
+        <SilencesDialog
+          silences={silences}
+          projectId={projectId}
+          projects={projects}
+          rules={rules}
+          onClose={() => setSilencesOpen(false)}
+          onChanged={load}
         />
       ) : null}
 
@@ -984,6 +1035,346 @@ function ChannelForm({
         </Button>
         <Button type="submit" disabled={busy}>
           {busy ? <Loader2 className="size-4 animate-spin" /> : null} 保存
+        </Button>
+      </DialogFooter>
+    </form>
+  )
+}
+
+function toLocalInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function silenceStatus(silence: AlertSilence): "active" | "upcoming" | "expired" {
+  const now = Date.now()
+  if (new Date(silence.endsAt).getTime() <= now) return "expired"
+  if (new Date(silence.startsAt).getTime() > now) return "upcoming"
+  return "active"
+}
+
+function SilencesDialog({
+  silences,
+  projectId,
+  projects,
+  rules,
+  onClose,
+  onChanged,
+}: {
+  silences: AlertSilence[]
+  projectId?: string
+  projects: Project[]
+  rules: AlertRule[]
+  onClose: () => void
+  onChanged: () => Promise<void>
+}) {
+  const [creating, setCreating] = React.useState(false)
+
+  const endNow = async (silence: AlertSilence) => {
+    try {
+      await api.updateAlertSilence(silence.id, { endsAt: new Date().toISOString() })
+      toast.success("维护窗口已结束")
+      await onChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "结束失败")
+    }
+  }
+
+  const remove = async (silence: AlertSilence) => {
+    if (!window.confirm(`删除静默窗口「${silence.name}」？`)) return
+    try {
+      await api.deleteAlertSilence(silence.id)
+      toast.success("静默窗口已删除")
+      await onChanged()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "删除失败")
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        {creating ? (
+          <SilenceForm
+            projectId={projectId}
+            projects={projects}
+            rules={rules}
+            onCancel={() => setCreating(false)}
+            onSaved={async () => {
+              setCreating(false)
+              await onChanged()
+            }}
+          />
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CalendarClock className="size-4" /> 静默 / 维护窗口
+              </DialogTitle>
+              <DialogDescription>
+                在窗口内不创建新的 firing 告警，也不发送 firing/resolved 通知；窗口结束后会按当前指标重新评估。
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-muted-foreground text-xs">可按项目或指定规则缩小范围；留空规则表示整个项目。</p>
+              <Button size="sm" onClick={() => setCreating(true)}>
+                <Plus className="size-4" /> 新建窗口
+              </Button>
+            </div>
+
+            {silences.length === 0 ? (
+              <div className="bg-muted/30 text-muted-foreground rounded-xl px-4 py-8 text-center text-sm">
+                还没有静默窗口。发布、迁移或值班交接时可以临时创建。
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {silences.map((silence) => {
+                  const status = silenceStatus(silence)
+                  const projectName = silence.projectId
+                    ? projects.find((project) => project.id === silence.projectId)?.name || "未知项目"
+                    : "全部项目"
+                  return (
+                    <div key={silence.id} className="bg-muted/25 space-y-2 rounded-xl px-3 py-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                            {silence.name}
+                            <Badge
+                              variant={status === "active" ? "default" : "secondary"}
+                              className="text-[10px]"
+                            >
+                              {status === "active" ? "生效中" : status === "upcoming" ? "未开始" : "已结束"}
+                            </Badge>
+                          </p>
+                          <p className="text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                            <span>{projectName}</span>
+                            <span>
+                              {formatFullDate(silence.startsAt)} → {formatFullDate(silence.endsAt)}
+                            </span>
+                            <span>
+                              {silence.ruleIds?.length
+                                ? `${silence.ruleIds.length} 条规则`
+                                : "全部规则"}
+                            </span>
+                          </p>
+                          {silence.reason ? (
+                            <p className="text-muted-foreground mt-1 line-clamp-2 text-[11px]">{silence.reason}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 gap-1">
+                          {status === "active" ? (
+                            <Button variant="ghost" size="sm" onClick={() => void endNow(silence)}>
+                              立即结束
+                            </Button>
+                          ) : null}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => void remove(silence)}
+                          >
+                            <Trash2 className="size-3.5" /> 删除
+                          </Button>
+                        </div>
+                      </div>
+                      {silence.ruleIds?.length ? (
+                        <p className="text-muted-foreground text-[10px]">
+                          指定规则：
+                          {silence.ruleIds
+                            .map((id) => rules.find((rule) => rule.id === id)?.name || id)
+                            .join("、")}
+                        </p>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function SilenceForm({
+  projectId,
+  projects,
+  rules,
+  onCancel,
+  onSaved,
+}: {
+  projectId?: string
+  projects: Project[]
+  rules: AlertRule[]
+  onCancel: () => void
+  onSaved: () => Promise<void>
+}) {
+  const now = new Date()
+  const [name, setName] = React.useState("")
+  const [reason, setReason] = React.useState("")
+  const [scope, setScope] = React.useState(projectId || "all")
+  const [startsAt, setStartsAt] = React.useState(toLocalInput(now))
+  const [endsAt, setEndsAt] = React.useState(toLocalInput(new Date(now.getTime() + 60 * 60 * 1000)))
+  const [ruleIds, setRuleIds] = React.useState<string[]>([])
+  const [busy, setBusy] = React.useState(false)
+
+  const eligibleRules = scope === "all" ? rules : rules.filter((rule) => rule.projectId === scope)
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) {
+      toast.error("请填写静默名称")
+      return
+    }
+    const start = new Date(startsAt)
+    const end = new Date(endsAt)
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+      toast.error("请填写有效的开始和结束时间")
+      return
+    }
+    if (end <= start) {
+      toast.error("结束时间必须晚于开始时间")
+      return
+    }
+    if (end <= new Date()) {
+      toast.error("结束时间必须晚于当前时间")
+      return
+    }
+    setBusy(true)
+    try {
+      await api.createAlertSilence({
+        name: name.trim(),
+        reason: reason.trim(),
+        projectId: scope === "all" ? undefined : scope,
+        ruleIds,
+        startsAt: start.toISOString(),
+        endsAt: end.toISOString(),
+      })
+      toast.success("静默窗口已创建")
+      await onSaved()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "创建失败")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="space-y-4">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <CalendarClock className="size-4" /> 新建静默窗口
+        </DialogTitle>
+        <DialogDescription>
+          窗口内评估仍会更新规则状态，但不会产生新的 firing 告警或通知。
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="silence-name">名称</Label>
+          <Input
+            id="silence-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="例如：订单服务发布"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>作用范围</Label>
+          <Select
+            value={scope}
+            onValueChange={(value) => {
+              setScope(value)
+              setRuleIds([])
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部项目</SelectItem>
+              {projects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="silence-reason">原因（可选）</Label>
+        <Input
+          id="silence-reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="例如：数据库迁移，预计 30 分钟"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="silence-start">开始时间</Label>
+          <Input
+            id="silence-start"
+            type="datetime-local"
+            value={startsAt}
+            onChange={(e) => setStartsAt(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="silence-end">结束时间</Label>
+          <Input
+            id="silence-end"
+            type="datetime-local"
+            value={endsAt}
+            onChange={(e) => setEndsAt(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>指定规则（可选）</Label>
+        {eligibleRules.length === 0 ? (
+          <p className="text-muted-foreground text-[11px]">当前范围下没有可选的告警规则。</p>
+        ) : (
+          <div className="scrollbar-thin flex max-h-32 flex-wrap gap-1.5 overflow-auto">
+            {eligibleRules.map((rule) => (
+              <label
+                key={rule.id}
+                className={cn(
+                  "flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] transition-colors",
+                  ruleIds.includes(rule.id) ? "bg-primary/10 text-primary" : "bg-muted/40 text-muted-foreground",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="accent-primary size-3"
+                  checked={ruleIds.includes(rule.id)}
+                  onChange={(e) =>
+                    setRuleIds((prev) =>
+                      e.target.checked ? [...prev, rule.id] : prev.filter((id) => id !== rule.id),
+                    )
+                  }
+                />
+                {rule.name}
+              </label>
+            ))}
+          </div>
+        )}
+        <p className="text-muted-foreground text-[10px]">不选择规则表示静默该范围内的全部规则。</p>
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>
+          取消
+        </Button>
+        <Button type="submit" disabled={busy}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : null} 创建
         </Button>
       </DialogFooter>
     </form>

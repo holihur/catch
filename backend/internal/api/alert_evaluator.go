@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/catch/catch/backend/internal/model"
+	"github.com/catch/catch/backend/internal/store"
 )
 
 // StartAlertEvaluator runs the metric alert loop until ctx is cancelled.
@@ -55,9 +56,13 @@ func (a *API) evaluateAlertRule(ctx context.Context, rule model.AlertRule) {
 		a.logger.Slog.WarnContext(ctx, "alert evaluator: aggregate failed", "ruleId", rule.ID.Hex(), "error", err)
 		return
 	}
+	silenced, silenceErr := a.store.IsRuleSilenced(ctx, rule.TenantID, rule.ProjectID, rule.ID, now)
+	if silenceErr != nil {
+		a.logger.Slog.WarnContext(ctx, "alert evaluator: silence lookup failed", "ruleId", rule.ID.Hex(), "error", silenceErr)
+	}
 	if !hasData {
 		if rule.State == "firing" {
-			a.resolveRuleAlerts(ctx, rule)
+			a.resolveRuleAlerts(ctx, rule, !silenced)
 		}
 		_ = a.store.SetAlertRuleResult(ctx, rule.ID, "nodata", 0, false, nil, now)
 		return
@@ -65,6 +70,21 @@ func (a *API) evaluateAlertRule(ctx context.Context, rule model.AlertRule) {
 
 	firing := compareMetric(value, rule.Operator, rule.Threshold)
 	message := alertMessage(rule, value)
+	if silenced {
+		switch {
+		case firing && rule.State == "firing":
+			_ = a.store.TouchFiringAlert(ctx, rule.ID, value, message, now)
+			_ = a.store.SetAlertRuleResult(ctx, rule.ID, "firing", value, true, rule.FiredAt, now)
+		case firing:
+			_ = a.store.SetAlertRuleResult(ctx, rule.ID, "silenced", value, true, rule.FiredAt, now)
+		case !firing && rule.State == "firing":
+			a.resolveRuleAlerts(ctx, rule, false)
+			_ = a.store.SetAlertRuleResult(ctx, rule.ID, "ok", value, true, nil, now)
+		default:
+			_ = a.store.SetAlertRuleResult(ctx, rule.ID, "ok", value, true, nil, now)
+		}
+		return
+	}
 	switch {
 	case firing && rule.State != "firing":
 		alert := &model.Alert{
@@ -75,6 +95,16 @@ func (a *API) evaluateAlertRule(ctx context.Context, rule model.AlertRule) {
 			StartedAt: now, UpdatedAt: now,
 		}
 		if err := a.store.CreateAlert(ctx, alert); err != nil {
+			if store.IsDuplicate(err) {
+				// Another API instance won the firing race. Reuse its alert and
+				// enqueue idempotently in case that instance crashed before enqueue.
+				existing, _ := a.store.FiringAlert(ctx, rule.ID)
+				_ = a.store.SetAlertRuleResult(ctx, rule.ID, "firing", value, true, &now, now)
+				if existing != nil {
+					a.enqueueAlertNotifications(ctx, rule, *existing, "firing")
+				}
+				return
+			}
 			a.logger.Slog.WarnContext(ctx, "alert evaluator: create alert failed", "ruleId", rule.ID.Hex(), "error", err)
 			return
 		}
@@ -85,7 +115,7 @@ func (a *API) evaluateAlertRule(ctx context.Context, rule model.AlertRule) {
 		_ = a.store.TouchFiringAlert(ctx, rule.ID, value, message, now)
 		_ = a.store.SetAlertRuleResult(ctx, rule.ID, "firing", value, true, rule.FiredAt, now)
 	case !firing && rule.State == "firing":
-		a.resolveRuleAlerts(ctx, rule)
+		a.resolveRuleAlerts(ctx, rule, true)
 		_ = a.store.SetAlertRuleResult(ctx, rule.ID, "ok", value, true, nil, now)
 		a.logger.Slog.InfoContext(ctx, "alert resolved", "ruleId", rule.ID.Hex(), "rule", rule.Name, "value", value)
 	default:

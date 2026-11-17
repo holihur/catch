@@ -397,3 +397,19 @@ type NotificationDelivery struct {
 	CreatedAt     time.Time          `bson:"createdAt" json:"createdAt"`
 	UpdatedAt     time.Time          `bson:"updatedAt" json:"updatedAt"`
 }
+
+// AlertSilence suppresses alert creation and notifications during a
+// maintenance window. A nil ProjectID applies to all projects in the tenant.
+type AlertSilence struct {
+	ID        primitive.ObjectID   `bson:"_id,omitempty" json:"id"`
+	TenantID  primitive.ObjectID   `bson:"tenantId" json:"tenantId"`
+	ProjectID *primitive.ObjectID  `bson:"projectId,omitempty" json:"projectId,omitempty"`
+	Name      string               `bson:"name" json:"name"`
+	Reason    string               `bson:"reason,omitempty" json:"reason,omitempty"`
+	StartsAt  time.Time            `bson:"startsAt" json:"startsAt"`
+	EndsAt    time.Time            `bson:"endsAt" json:"endsAt"`
+	RuleIDs   []primitive.ObjectID `bson:"ruleIds,omitempty" json:"ruleIds,omitempty"`
+	CreatedBy string               `bson:"createdBy,omitempty" json:"createdBy,omitempty"`
+	CreatedAt time.Time            `bson:"createdAt" json:"createdAt"`
+	UpdatedAt time.Time            `bson:"updatedAt" json:"updatedAt"`
+}

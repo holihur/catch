@@ -28,14 +28,16 @@ const Version = "1.0.0"
 
 // API wires HTTP handlers to storage, auth and logging.
 type API struct {
-	cfg        config.Config
-	store      *store.Store
-	logger     *logging.Logger
-	oidc       *auth.Service
-	box        *secure.Box
-	sourcemaps *sourcemap.Service
-	limiter    *rateLimiter
-	startedAt  time.Time
+	cfg          config.Config
+	store        *store.Store
+	logger       *logging.Logger
+	oidc         *auth.Service
+	box          *secure.Box
+	sourcemaps   *sourcemap.Service
+	limiter      *rateLimiter
+	notifyPolicy *webhookPolicy
+	notifyClient *http.Client
+	startedAt    time.Time
 }
 
 // New creates the API.
@@ -44,15 +46,18 @@ func New(cfg config.Config, st *store.Store, logger *logging.Logger) (*API, erro
 	if err != nil {
 		return nil, err
 	}
+	policy := newWebhookPolicy(cfg.NotifyAllowPrivate, cfg.NotifyPrivateAllowlist)
 	return &API{
-		cfg:        cfg,
-		store:      st,
-		logger:     logger,
-		oidc:       auth.NewService(st, box, cfg.PublicURL),
-		box:        box,
-		sourcemaps: sourcemap.New(st),
-		limiter:    newRateLimiter(cfg.RateLimit),
-		startedAt:  time.Now().UTC(),
+		cfg:          cfg,
+		store:        st,
+		logger:       logger,
+		oidc:         auth.NewService(st, box, cfg.PublicURL),
+		box:          box,
+		sourcemaps:   sourcemap.New(st),
+		limiter:      newRateLimiter(cfg.RateLimit),
+		notifyPolicy: policy,
+		notifyClient: newNotificationHTTPClient(policy),
+		startedAt:    time.Now().UTC(),
 	}, nil
 }
 
@@ -102,6 +107,7 @@ func (a *API) Routes() http.Handler {
 			pr.Get("/alerts", a.listAlerts)
 			pr.Get("/notification-channels", a.listNotificationChannels)
 			pr.Get("/notification-deliveries", a.listNotificationDeliveries)
+			pr.Get("/alert-silences", a.listAlertSilences)
 			pr.Get("/events", a.listEvents)
 			pr.Get("/events/{id}", a.getEvent)
 			pr.Get("/issues", a.listIssues)
@@ -135,6 +141,9 @@ func (a *API) Routes() http.Handler {
 				ar.Patch("/notification-channels/{id}", a.updateNotificationChannel)
 				ar.Delete("/notification-channels/{id}", a.deleteNotificationChannel)
 				ar.Post("/notification-channels/{id}/test", a.testNotificationChannel)
+				ar.Post("/alert-silences", a.createAlertSilence)
+				ar.Patch("/alert-silences/{id}", a.updateAlertSilence)
+				ar.Delete("/alert-silences/{id}", a.deleteAlertSilence)
 				ar.Patch("/tenant", a.updateTenant)
 				ar.Put("/tenant/oidc", a.updateOIDC)
 			})

@@ -22,7 +22,7 @@ Catch 是一个多租户日志与错误可观测平台：前端 SDK 和后端服
 | OpenTelemetry | OTLP/HTTP + gRPC：logs、metrics、完整 trace spans；protobuf/JSON/gzip、部分成功响应 |
 | Trace | 完整调用链存储、瀑布图、span 属性/事件/资源，错误 span 自动转为问题；按项目 0-100% 稳定采样 |
 | Metrics | OTLP gauge/sum/histogram/summary 最新值与时间序列；histogram bucket / summary quantile 分布 |
-| 告警 | 指标阈值规则、avg/max/min/sum/last 聚合、窗口与级别、firing/resolved 生命周期、自动恢复；Webhook/邮件通知与失败重试 |
+| 告警 | 指标阈值规则、avg/max/min/sum/last 聚合、窗口与级别、firing/resolved 生命周期、自动恢复；Webhook/邮件通知与失败重试；静默/维护窗口 |
 | 设置 | 项目与采集密钥、密钥轮换、成员角色、租户信息、OIDC 配置、SDK 接入示例与一键测试 |
 | 可观测性 | 后端请求日志/panic 自动落库；前端 SDK 捕获 `window.onerror`、`unhandledrejection`、React 错误边界和 API 5xx |
 
@@ -425,7 +425,9 @@ OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,service.version=
 - **Metrics**：gauge、sum、histogram、exponential_histogram、summary 均会存储，**指标**页面可查看最新值与时间序列；histogram 的 explicit bounds/bucket counts、summary 的 quantile 会保留并在「分布」标签页展示
 - **Trace 采样**：设置 → 项目 → 采样，支持 0-100%；按 trace ID 稳定哈希采样，同一条 Trace 不会只存一部分；错误 Trace 默认始终保留
 - **指标告警**：每 `ALERT_INTERVAL_SECONDS`（默认 30 秒）评估一次，支持 avg/max/min/sum/last、统计窗口、warning/critical；触发后创建 firing 告警，恢复后自动 resolved；规则暂停/删除会同步恢复活动告警
-- **通知渠道**：租户级 Webhook / 邮件渠道，规则可多选绑定；firing/resolved 异步投递，失败指数退避重试（默认 5 次）；Webhook 支持 `X-Catch-Signature` HMAC-SHA256，邮件使用 `SMTP_*` 配置
+- **通知渠道**：租户级 Webhook / 邮件渠道，规则可多选绑定；firing/resolved 异步投递，失败指数退避重试（默认 5 次），多实例通过 Mongo 原子 lease 抢占避免重复投递；Webhook 支持 `X-Catch-Signature` HMAC-SHA256，邮件使用 `SMTP_*` 配置
+- **静默窗口**：按项目/指定规则创建维护窗口；窗口内不创建新的 firing 告警，也不发送 firing/resolved 通知；窗口结束自动恢复评估
+- **Webhook SSRF 防护**：生产默认拒绝内网/loopback/link-local 目标；`NOTIFY_PRIVATE_ALLOWLIST` 支持主机名、IP、CIDR，`NOTIFY_ALLOW_PRIVATE=true` 可显式放开
 - 单次 OTLP 请求超过 5000 条时返回标准 `partialSuccess`（接受前 5000 条），不再整批拒绝
 - 请求体上限 20MB；同样受项目级 ingest 速率限制
 - `/v1/logs`、`/v1/traces`、`/v1/metrics` 是 OTel 默认 HTTP 路径别名
@@ -562,6 +564,10 @@ CATCH_RELEASE=web@1.2.3 \
 | PATCH | `/api/alert-rules/{id}` | 更新/启停告警规则（Admin+） |
 | DELETE | `/api/alert-rules/{id}` | 删除告警规则并恢复活动告警（Admin+） |
 | GET | `/api/alerts` | firing/resolved 告警事件 |
+| GET | `/api/alert-silences` | 静默/维护窗口列表 |
+| POST | `/api/alert-silences` | 创建静默窗口（Admin+） |
+| PATCH | `/api/alert-silences/{id}` | 更新/结束静默窗口（Admin+） |
+| DELETE | `/api/alert-silences/{id}` | 删除静默窗口（Admin+） |
 | GET | `/api/notification-channels` | 通知渠道列表 |
 | POST | `/api/notification-channels` | 创建通知渠道（Admin+） |
 | PATCH | `/api/notification-channels/{id}` | 更新/启停通知渠道（Admin+） |
@@ -643,6 +649,8 @@ cd frontend && pnpm typecheck && pnpm build
 - 指标告警：触发 → firing、修改阈值 → resolved；规则暂停/删除同步恢复
 - gRPC TLS：自签证书握手成功；生产未配 TLS 且未允许明文时 gRPC 安全关闭
 - 告警通知：Webhook 测试、firing/resolved 投递、HMAC 签名均实测通过；失败进入重试队列
+- 静默窗口：生效期间不创建新 firing/不发通知，窗口结束后恢复
+- Webhook SSRF：内网默认拒绝，CIDR 白名单放行；多 worker 原子抢占投递
 
 ---
 
